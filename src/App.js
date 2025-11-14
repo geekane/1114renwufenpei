@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { HashRouter as Router, Routes, Route, Link, useParams, useNavigate } from 'react-router-dom';
-import { Layout, Menu, Card, Select, Typography, List, Tag } from 'antd';
+import { Layout, Menu, Card, Select, Button, Typography, List, Tag } from 'antd';
 import 'antd/dist/reset.css'; // Ant Design 样式重置
 import { users, projects, tasks } from './mockData';
 import GanttChart from './GanttChart';
@@ -10,6 +10,7 @@ const { Title, Text } = Typography;
 
 // 主仪表盘，显示“我的任务”
 const Dashboard = ({ userId }) => {
+  const navigate = useNavigate(); // Get the navigate function
   const currentUser = users.find(u => u.id === userId);
   const myTasks = tasks.filter(t => t.assignee_id === userId);
   
@@ -23,11 +24,14 @@ const Dashboard = ({ userId }) => {
           return (
             <List.Item>
               <List.Item.Meta
-                title={<Link to={`/projects/${task.project_id}`}>{task.name}</Link>}
-                description={`所属项目: ${project.name} | 截止日期: ${task.end}`}
+                title={task.name}
+                description={`所属项目: ${project.name} | 开始日期: ${task.start} | 截止日期: ${task.end}`}
               />
-              <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
                 {task.progress === 100 ? <Tag color="success">已完成</Tag> : <Tag color="processing">进行中 {task.progress}%</Tag>}
+                <Button type="primary" size="small" onClick={() => navigate(`/projects/${task.project_id}`)}>
+                  跳转至甘特图
+                </Button>
               </div>
             </List.Item>
           );
