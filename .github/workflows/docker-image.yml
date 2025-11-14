@@ -1,12 +1,55 @@
-version: '3.8'
+# GitHub Actions 工作流名称
+name: Build and Push to Docker Hub
 
-services:
-  saas-pm-demo-app:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: saas-pm-demo:latest
-    container_name: saas-pm-demo-container
-    ports:
-      - "8080:80"
-    restart: unless-stopped
+# 控制工作流触发的事件
+on:
+  # 当有代码推送到 main 分支时触发
+  push:
+    branches: [ "main" ]
+  # 允许您从 Actions 标签页手动运行此工作流
+  workflow_dispatch:
+
+# 一个工作流可以包含一个或多个作业(job)
+jobs:
+  # 定义一个名为 "build-and-push" 的作业
+  build-and-push:
+    # 指定作业运行的虚拟环境
+    runs-on: ubuntu-latest
+
+    # 作业中执行的一系列步骤
+    steps:
+      # 步骤1: 检出您的代码仓库
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # 步骤2: 登录到 Docker Hub
+      # 您必须先在 GitHub 仓库的 "Settings > Secrets and variables > Actions" 中
+      # 创建名为 DOCKERHUB_USERNAME 和 DOCKERHUB_TOKEN 的机密。
+      # DOCKERHUB_TOKEN 是您在 Docker Hub 账户中生成的 Personal Access Token。
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # 步骤3: 为 Docker 提取元数据 (标签和标记)
+      # 这会自动为您的镜像生成一些有用的标签
+      - name: Extract metadata (tags and labels) for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          # 镜像名称格式为 <你的Docker Hub用户名>/saas-pm-demo
+          images: ${{ secrets.DOCKERHUB_USERNAME }}/saas-pm-demo
+
+      # 步骤4: 构建并推送 Docker 镜像
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          # Dockerfile 的构建上下文路径
+          context: ./saas-pm-demo
+          # 设置为 true 以推送镜像到 Docker Hub
+          push: true
+          # 使用上一步 (meta) 自动生成的标签
+          tags: ${{ steps.meta.outputs.tags }}
+          # 使用上一步 (meta) 自动生成的元数据标签
+          labels: ${{ steps.meta.outputs.labels }}
