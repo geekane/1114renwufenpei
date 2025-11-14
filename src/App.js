@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, Link, useParams, useNavigate } from 'react-router-dom';
-import { Layout, Menu, Card, Select, Button, Typography, List, Tag } from 'antd';
+import React, { useState } from 'react';
+import { HashRouter as Router, Routes, Route, Link, useParams, useNavigate } from 'react-router-dom';
+import { Layout, Menu, Card, Select, Typography, List, Tag } from 'antd';
 import 'antd/dist/reset.css'; // Ant Design 样式重置
 import { users, projects, tasks } from './mockData';
 import GanttChart from './GanttChart';
