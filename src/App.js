@@ -1,56 +1,59 @@
-import React, { useState } from 'react';
-import { HashRouter as Router, Routes, Route, Link, useParams, useNavigate } from 'react-router-dom';
-import { Layout, Menu, Card, Select, Button, Typography, List, Tag } from 'antd';
-import 'antd/dist/reset.css'; // Ant Design 样式重置
-import { users, projects, tasks } from './mockData';
+import React from 'react';
+import { BrowserRouter as Router, Routes, Route, Link, useParams } from 'react-router-dom';
+import { Layout, Menu, Card, Table, Tag } from 'antd';
+import 'antd/dist/reset.css';
+import { projects, tasks, locations } from './mockData';
 import GanttChart from './GanttChart';
 
+import { Typography } from 'antd';
 const { Header, Content, Sider } = Layout;
-const { Title, Text } = Typography;
+const { Title } = Typography;
 
-// 主仪表盘，显示“我的任务”
-const Dashboard = ({ userId }) => {
-  const navigate = useNavigate(); // Get the navigate function
-  const currentUser = users.find(u => u.id === userId);
-  const myTasks = tasks.filter(t => t.assignee_id === userId);
-  
-  return (
-    <Card title={`欢迎回来，${currentUser.name}！这是你所有的任务`}>
-      <List
-        itemLayout="horizontal"
-        dataSource={myTasks}
-        renderItem={task => {
-          const project = projects.find(p => p.id === task.project_id);
+// --- New Home Page: Location Selection ---
+const LocationSelectionPage = () => {
+  const columns = [
+    { title: '城市', dataIndex: 'city', key: 'city' },
+    { title: '位置', dataIndex: 'location', key: 'location' },
+    { title: '综合评分', dataIndex: 'score', key: 'score', sorter: (a, b) => a.score - b.score },
+    { title: '回本周期 (月)', dataIndex: 'payback_period', key: 'payback_period', sorter: (a, b) => a.payback_period - b.payback_period },
+    {
+      title: '状态',
+      key: 'status',
+      dataIndex: 'status',
+      render: (status, record) => {
+        if (record.project_id) {
           return (
-            <List.Item>
-              <List.Item.Meta
-                title={task.name}
-                description={`所属项目: ${project.name} | 开始日期: ${task.start} | 截止日期: ${task.end}`}
-              />
-              <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                {task.progress === 100 ? <Tag color="success">已完成</Tag> : <Tag color="processing">进行中 {task.progress}%</Tag>}
-                <Button type="primary" size="small" onClick={() => navigate(`/projects/${task.project_id}`)}>
-                  跳转至甘特图
-                </Button>
-              </div>
-            </List.Item>
+            <Link to={`/projects/${record.project_id}`}>
+              <Tag color="processing">{status}</Tag>
+            </Link>
           );
-        }}
-      />
+        }
+        return <Tag color="default">{status}</Tag>;
+      },
+    },
+  ];
+
+  return (
+    <Card title="网吧新店选址评估">
+      <Table columns={columns} dataSource={locations} rowKey="id" />
     </Card>
   );
 };
 
-// 项目详情页，包含甘特图
+// --- Project Detail Page (remains the same) ---
 const ProjectPage = () => {
   const { projectId } = useParams();
   const project = projects.find(p => p.id === parseInt(projectId));
   const projectTasks = tasks.filter(t => t.project_id === parseInt(projectId));
   
+  if (!project) {
+    return <h2>项目未找到！</h2>;
+  }
+
   return (
     <div>
       <Title level={2}>{project.name}</Title>
-      <Text type="secondary">{project.description}</Text>
+      <p>{project.description}</p>
       <div style={{ marginTop: 24 }}>
         <GanttChart tasks={projectTasks} />
       </div>
@@ -58,25 +61,8 @@ const ProjectPage = () => {
   );
 };
 
-// 应用主布局
+// --- Main App Layout ---
 function App() {
-  const navigate = useNavigate();
-  const [currentProject, setCurrentProject] = useState(projects[0].id);
-  const [currentUserId, setCurrentUserId] = useState(users[0].id); // User state
-
-  // Handle project switching
-  const handleProjectChange = (value) => {
-    setCurrentProject(value);
-    navigate(`/projects/${value}`);
-  };
-
-  // Handle user switching
-  const handleUserChange = (value) => {
-    setCurrentUserId(value);
-    // Navigate to dashboard to reflect the change
-    navigate('/');
-  };
-
   return (
     <Layout style={{ minHeight: '100vh' }}>
       <Sider>
@@ -86,38 +72,22 @@ function App() {
         <Menu
           theme="dark"
           mode="inline"
-          defaultSelectedKeys={['dashboard']}
+          defaultSelectedKeys={['locations']}
           items={[
             {
-              key: 'dashboard',
-              label: <Link to="/">我的任务</Link>,
+              key: 'locations',
+              label: <Link to="/">选点评估</Link>,
             },
           ]}
         />
       </Sider>
       <Layout>
-        <Header style={{ background: '#fff', padding: '0 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div style={{ display: 'flex', gap: '24px' }}>
-            <div>
-                <Text>切换项目：</Text>
-                <Select value={currentProject} onChange={handleProjectChange} style={{ width: 200 }}>
-                {projects.map(p => <Select.Option key={p.id} value={p.id}>{p.name}</Select.Option>)}
-                </Select>
-            </div>
-            <div>
-                <Text>切换用户：</Text>
-                <Select value={currentUserId} onChange={handleUserChange} style={{ width: 120 }}>
-                {users.map(u => <Select.Option key={u.id} value={u.id}>{u.name}</Select.Option>)}
-                </Select>
-            </div>
-          </div>
-          <div>
-             <Text>当前用户: {users.find(u => u.id === currentUserId).name}</Text>
-          </div>
+        <Header style={{ background: '#fff', padding: '0 24px' }}>
+            <div style={{ fontSize: '18px', fontWeight: 'bold' }}>SaaS PM Demo</div>
         </Header>
         <Content style={{ margin: '24px 16px', padding: 24, background: '#fff' }}>
           <Routes>
-            <Route path="/" element={<Dashboard userId={currentUserId} />} />
+            <Route path="/" element={<LocationSelectionPage />} />
             <Route path="/projects/:projectId" element={<ProjectPage />} />
           </Routes>
         </Content>
@@ -126,7 +96,7 @@ function App() {
   );
 }
 
-// 路由包裹器
+// --- App Wrapper ---
 const AppWrapper = () => (
   <Router>
     <App />
