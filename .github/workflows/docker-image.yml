@@ -1,0 +1,12 @@
+version: '3.8'
+
+services:
+  saas-pm-demo-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: saas-pm-demo:latest
+    container_name: saas-pm-demo-container
+    ports:
+      - "8080:80"
+    restart: unless-stopped
