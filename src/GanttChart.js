@@ -57,11 +57,12 @@ const GanttChart = ({ tasks }) => {
 
         gantt.init(ganttRef.current);
 
+        const ganttContainer = ganttRef.current;
         // Cleanup function
         return () => {
-            if (ganttRef.current) {
+            if (ganttContainer) {
                 gantt.clearAll();
-                ganttRef.current.innerHTML = '';
+                ganttContainer.innerHTML = '';
             }
         };
     }, []);
