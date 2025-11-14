@@ -73,7 +73,7 @@ const GanttChart = ({ tasks }) => {
         
         const calculateDuration = (start, end) => Math.round((new Date(end) - new Date(start)) / (1000 * 60 * 60 * 24)) + 1;
 
-        const transformedTasks = tasks.map(task => ({ ...task, duration: calculateDuration(task.start, task.end) }));
+        const transformedTasks = tasks.map(task => ({ ...task, start_date: new Date(task.start), duration: calculateDuration(task.start, task.end) }));
         
         const links = tasks
             .filter(task => task.dependencies)
