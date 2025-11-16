@@ -1,0 +1,58 @@
+/* src/Responsive.css */
+
+/* Styles for the hamburger menu button in the header */
+.trigger {
+  padding: 0 24px;
+  font-size: 18px;
+  line-height: 64px;
+  cursor: pointer;
+  transition: color 0.3s;
+  display: none; /* Hidden by default */
+}
+
+.trigger:hover {
+  color: #1890ff;
+}
+
+/* Media query for mobile devices */
+@media (max-width: 991px) {
+  /* Show the hamburger button */
+  .trigger {
+    display: block;
+  }
+
+  /* Hide the default desktop sider trigger */
+  .ant-layout-sider-trigger {
+    display: none;
+  }
+}
+
+/* Custom Scrollbar for Gantt Chart */
+.gantt-container ::-webkit-scrollbar {
+  height: 14px; /* 增加滚动条高度，方便触摸 */
+}
+
+.gantt-container ::-webkit-scrollbar-track {
+  background: #f1f1f1; /* 设置轨道背景色 */
+  border-radius: 10px;
+}
+
+.gantt-container ::-webkit-scrollbar-thumb {
+  background: #888; /* 设置滑块颜色 */
+  border-radius: 10px;
+  border: 3px solid #f1f1f1; /* 创建滑块周围的边框效果 */
+}
+
+.gantt-container ::-webkit-scrollbar-thumb:hover {
+  background: #555; /* 鼠标悬停时加深颜色 */
+}
+
+/* Gantt-task-react tooltip position override */
+.tooltip {
+    position: absolute !important;
+    bottom: 100% !important; /* 定位到元素的正上方 */
+    left: 50% !important;
+    transform: translateX(-50%) translateY(-10px) !important; /* 水平居中并向上偏移10px，留出间隙 */
+    top: auto !important; /* 取消库计算的 top 值 */
+    right: auto !important; /* 取消库计算的 right 值 */
+}
