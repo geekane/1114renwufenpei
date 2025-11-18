@@ -2,7 +2,37 @@ import React, { useEffect, useRef, useState } from 'react';
 import * as VTable from '@visactor/vtable';
 import * as VTableGantt from '@visactor/vtable-gantt';
 import { DateInputEditor, InputEditor } from '@visactor/vtable-editors';
-// Data is now fetched from the API.
+import { INITIAL_RECORDS } from './mockData';
+
+const getInitialRecords = () => {
+    console.log("Attempting to get initial records...");
+    try {
+        const savedRecords = localStorage.getItem('ganttRecords');
+        if (savedRecords) {
+            console.log("SUCCESS: Loaded records from localStorage.");
+            return JSON.parse(savedRecords);
+        }
+    } catch (error) {
+        console.error('ERROR: Failed to parse records from localStorage, using initial records.', error);
+    }
+    console.log("INFO: No records in localStorage, using initial records from mockData.js.");
+    return INITIAL_RECORDS;
+};
+
+const getInitialMarkLines = () => {
+    console.log("Attempting to get initial marklines...");
+    try {
+        const savedMarkLines = localStorage.getItem('ganttMarkLines');
+        if (savedMarkLines) {
+            console.log("SUCCESS: Loaded marklines from localStorage.");
+            return JSON.parse(savedMarkLines);
+        }
+    } catch (error) {
+        console.error('ERROR: Failed to parse marklines from localStorage, using empty array.', error);
+    }
+    console.log("INFO: No marklines in localStorage, using empty array.");
+    return [];
+};
 
 function formatDate(date) {
     const year = date.getFullYear();
@@ -132,40 +162,30 @@ const GanttChart = () => {
     const containerRef = useRef(null);
     const instanceRef = useRef(null);
     const isUpdatingExternally = useRef(false);
-    const [records, setRecords] = useState([]);
-    const [markLines, setMarkLines] = useState([]);
+    // Use lazy initial state to ensure getInitial* is called only once.
+    const [records, setRecords] = useState(getInitialRecords);
+    const [markLines, setMarkLines] = useState(getInitialMarkLines);
     const [timeScale, setTimeScale] = useState('day');
 
-    // Fetch data from the API on component mount
+    // This useEffect handles SAVING records to localStorage whenever the `records` state changes.
     useEffect(() => {
-        console.log("Attempting to fetch data from API...");
-        fetch('/api/data')
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error(`Network response was not ok: ${response.statusText}`);
-                }
-                return response.json();
-            })
-            .then(data => {
-                console.log("SUCCESS: Loaded data from API.", data);
-                // Ensure data.records is an array before setting state
-                if (Array.isArray(data.records)) {
-                    setRecords(data.records);
-                } else {
-                    console.error("ERROR: API response for records is not an array.", data);
-                }
-                // Ensure data.markLines is an array before setting state
-                if (Array.isArray(data.markLines)) {
-                    setMarkLines(data.markLines);
-                } else {
-                    // It's okay if markLines is missing or not an array, default to empty
-                    setMarkLines([]);
-                }
-            })
-            .catch(error => {
-                console.error('ERROR: Failed to fetch or parse data from API.', error);
-            });
-    }, []); // The empty dependency array ensures this effect runs only once on mount.
+        console.log("EVENT: `records` state changed. SAVING to localStorage.");
+        try {
+            localStorage.setItem('ganttRecords', JSON.stringify(records));
+        } catch (error) {
+            console.error('ERROR: Failed to save records to localStorage', error);
+        }
+    }, [records]);
+
+    // This useEffect handles SAVING markLines to localStorage whenever the `markLines` state changes.
+    useEffect(() => {
+        console.log("EVENT: `markLines` state changed. SAVING to localStorage.");
+        try {
+            localStorage.setItem('ganttMarkLines', JSON.stringify(markLines));
+        } catch (error) {
+            console.error('ERROR: Failed to save markLines to localStorage', error);
+        }
+    }, [markLines]);
 
     // This useEffect handles the INITIALIZATION of the Gantt chart instance.
     // It runs only ONCE when the component mounts.
