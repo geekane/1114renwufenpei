@@ -238,10 +238,6 @@ function App() {
              label: <Link to="/store-details">门店详情</Link>,
           },
             {
-              key: 'locations',
-              label: <Link to="/">选点评估</Link>,
-            },
-            {
                key: 'd1-gantt',
                label: <Link to="/d1-gantt">D1甘特图测试</Link>,
             },
