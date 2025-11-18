@@ -4,6 +4,7 @@ import { Layout, Menu, Card, Table, Tag, Button, Space, Typography } from 'antd'
 import { MenuUnfoldOutlined, MenuFoldOutlined } from '@ant-design/icons';
 import { projects, locations } from './mockData';
 import GanttChart from './GanttChart';
+import D1GanttPage from './D1GanttPage'; // Import the new page
 import './Responsive.css';
 
 const { Header, Content, Sider } = Layout;
@@ -87,6 +88,10 @@ function App() {
               key: 'locations',
               label: <Link to="/">选点评估</Link>,
             },
+            {
+               key: 'd1-gantt',
+               label: <Link to="/d1-gantt">D1甘特图测试</Link>,
+            },
           ]}
         />
       </Sider>
@@ -109,6 +114,7 @@ function App() {
           <Routes>
             <Route path="/" element={<LocationSelectionPage />} />
             <Route path="/projects/:projectId" element={<ProjectPage />} />
+            <Route path="/d1-gantt" element={<D1GanttPage />} />
           </Routes>
         </Content>
         
@@ -121,6 +127,7 @@ function App() {
 const AppWrapper = () => (
   <Router>
     <App />
+    <div id="live-demo-additional-container" style={{ position: 'fixed', top: 0, left: 0, zIndex: 10000 }} />
   </Router>
 );
 
