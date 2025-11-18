@@ -60,6 +60,29 @@ function createPopup({ date, content }, position, callback) {
     popup.querySelector('.popup-input').focus();
 }
 
+// Helper for API calls to the backend
+const apiCall = async (endpoint, method = 'POST', body) => {
+    try {
+        const response = await fetch(`/api/${endpoint}`, {
+            method,
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(body),
+        });
+        if (!response.ok) {
+            const errorData = await response.json();
+            // Use a more specific error message if available
+            throw new Error(errorData.details || errorData.error || `Network response was not ok: ${response.statusText}`);
+        }
+        return await response.json();
+    } catch (error) {
+        console.error(`ERROR: API call to /api/${endpoint} failed.`, error);
+        alert(`操作失败: ${error.message}`);
+        return { success: false, error }; // Indicate failure
+    }
+};
+
 const getChineseWeekday = (date) => {
     const day = new Date(date).getDay();
     const weekdays = ['日', '一', '二', '三', '四', '五', '六'];
@@ -198,11 +221,7 @@ const GanttChart = () => {
             
             const option = {
                 records, // Uses the state initialized from localStorage
-                markLine: {
-                    markLines: markLines, // 传递标记线数据
-                    labelField: 'date', // 指定使用 'date' 字段作为标签
-                    contentField: 'content' // 指定使用 'content' 字段作为显示内容
-                }, // Uses the state initialized from localStorage
+                markLine: markLines, // Uses the state initialized from localStorage
                 taskListTable: { columns, tableWidth: 390, theme: { headerStyle: { borderColor: '#e1e4e8', borderLineWidth: 0, fontSize: 18, fontWeight: 'bold', color: 'red' }, bodyStyle: { borderColor: '#e1e4e8', borderLineWidth: 0, fontSize: 16, color: '#4D4D4D', bgColor: '#FFF' } } },
                 frame: { outerFrameStyle: { borderLineWidth: 0, borderColor: 'red', cornerRadius: 8 } },
                 grid: { backgroundColor: '#f0f0fb', horizontalLine: { lineWidth: 2, lineColor: '#d5d9ee' } },
@@ -251,48 +270,150 @@ const GanttChart = () => {
             const ganttInstance = new VTableGantt.Gantt(containerRef.current, option);
             instanceRef.current = ganttInstance;
 
+            const handleCellEdit = async (args) => {
+                const { field, value, record } = args;
+                // In tree mode, the record for sub-items is nested.
+                const id = record.id || (record.data ? record.data.id : null);
+            
+                if (!id || !field) {
+                  console.warn('Cell edit ignored: missing id or field.', args);
+                  return;
+                }
+            
+                const changedData = { [field]: value };
+                console.log(`EVENT: User edited cell. Task ID: ${id}, changed:`, changedData);
+            
+                const result = await apiCall('task', 'POST', { id, changedData });
+            
+                if (result.success) {
+                  // The gantt instance is already updated. We just need to sync our React state.
+                  console.log("SYNC: Cell edit successful. Updating React state.");
+                  setRecords(currentRecords => {
+                    // Need a recursive function to update nested records in tree data
+                    const updateNode = (nodes) => {
+                        return nodes.map(node => {
+                            if (node.id === id) {
+                                return { ...node, ...changedData };
+                            }
+                            if (node.sub) {
+                                return { ...node, sub: updateNode(node.sub) };
+                            }
+                            return node;
+                        });
+                    };
+                    return updateNode(currentRecords);
+                  });
+                } else {
+                  alert('更新失败，正在从服务器恢复数据...');
+                  fetchData(); // Re-fetch to revert to the last known good state
+                }
+            };
+            
             const handleMarkLineCreate = ({ data, position }) => {
-                createPopup({ date: data.startDate, content: '' }, position, value => {
+                createPopup({ date: data.startDate, content: '' }, position, async value => {
                   const newMarkLine = {
                     date: formatDate(data.startDate),
                     content: value || '新建里程碑',
-                    contentStyle: { color: '#fff' },
+                    // Default styles
+                    contentStyle: { color: '#fff', fontSize: '12px' },
                     style: { lineWidth: 1, lineColor: 'red' }
                   };
-                  console.log("EVENT: User created new markline. UPDATING markLines state.", newMarkLine);
-                  setMarkLines(prev => [...prev, newMarkLine]);
+                  
+                  const result = await apiCall('markline', 'POST', newMarkLine);
+
+                  if (result.success) {
+                    console.log("EVENT: User created new markline. Syncing with D1 was successful. UPDATING state.", newMarkLine);
+                    setMarkLines(prev => [...prev, newMarkLine]);
+                  }
                 });
             };
       
             const handleMarkLineClick = ({ data, position }) => {
-                createPopup({ date: data.date, content: data.content }, position, value => {
-                  console.log(`EVENT: User updated markline. UPDATING markLines state for date: ${data.date}`);
-                  setMarkLines(prev => 
-                    prev.map(line => 
-                      line.date === data.date ? { ...line, content: value } : line
-                    )
-                  );
+                createPopup({ date: data.date, content: data.content }, position, async value => {
+                  // Create the updated object, ensuring we don't send undefined values
+                  const updatedMarkLine = { ...data, content: value || data.content };
+                  
+                  // The backend handles UPSERT, so we just POST the updated object.
+                  const result = await apiCall('markline', 'POST', updatedMarkLine);
+                  
+                  if(result.success) {
+                    console.log(`EVENT: User updated markline. Sync with D1 successful. UPDATING state for date: ${data.date}`);
+                    setMarkLines(prev =>
+                      prev.map(line =>
+                        line.date === data.date ? { ...line, content: value } : line
+                      )
+                    );
+                  }
                 });
             };
 
             const handleTaskChange = (args) => {
                 if (isUpdatingExternally.current) {
                     console.log("INFO: Ignoring `change_task` event from external update.");
-                    // Reset the flag on the next frame to avoid race conditions
-                    // where multiple events might be fired from a single action.
                     requestAnimationFrame(() => {
                         isUpdatingExternally.current = false;
                     });
                     return;
                 }
                 const { records: newRecords } = args;
+            
+                // The `records` variable in this closure holds the state *before* this change.
+                // We can use it to diff against `newRecords`.
+                let changedRecord = null;
+                let originalRecord = null;
+            
+                // Helper to find a record by ID in a nested structure
+                const findRecordById = (id, nodes) => {
+                    for (const node of nodes) {
+                        if (node.id === id) return node;
+                        if (node.sub) {
+                            const found = findRecordById(id, node.sub);
+                            if (found) return found;
+                        }
+                    }
+                    return null;
+                };
+            
+                // Flatten the new records to make searching easier
+                const flatNewRecords = instanceRef.current.getRecords();
+            
+                for (const newRec of flatNewRecords) {
+                    const oldRec = findRecordById(newRec.id, records); // `records` is the state before the update
+                    if (oldRec && (newRec.start !== oldRec.start || newRec.end !== oldRec.end || newRec.progress !== oldRec.progress)) {
+                        changedRecord = newRec;
+                        originalRecord = oldRec;
+                        break;
+                    }
+                }
+            
+                if (changedRecord && originalRecord) {
+                    const changedData = {};
+                    if (changedRecord.start !== originalRecord.start) changedData.start = changedRecord.start;
+                    if (changedRecord.end !== originalRecord.end) changedData.end = changedRecord.end;
+                    if (changedRecord.progress !== originalRecord.progress) changedData.progress = changedRecord.progress;
+            
+                    if (Object.keys(changedData).length > 0) {
+                        console.log(`EVENT: \`change_task\` (drag/resize) fired. Task ID: ${changedRecord.id}, changed:`, changedData);
+                        
+                        apiCall('task', 'POST', { id: changedRecord.id, changedData })
+                          .then(result => {
+                              if (!result.success) {
+                                  alert('同步任务变更失败，正在从服务器恢复数据...');
+                                  fetchData(); // Revert on failure
+                              }
+                          });
+                    }
+                }
+                
                 console.log("EVENT: `change_task` fired from Gantt instance. UPDATING records state.");
+                // Update React state to reflect the UI change immediately.
                 setRecords(newRecords);
             };
     
             ganttInstance.on('click_markline_create', handleMarkLineCreate);
             ganttInstance.on('click_markline_content', handleMarkLineClick);
             ganttInstance.on('change_task', handleTaskChange);
+            ganttInstance.on('after_edit_cell', handleCellEdit); // Register the new handler
         }
 
         return () => {
