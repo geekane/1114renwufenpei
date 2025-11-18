@@ -271,35 +271,40 @@ const GanttChart = () => {
             instanceRef.current = ganttInstance;
 
             const handleCellEdit = async (args) => {
-                const { field, value, record } = args;
-                // In tree mode, the record for sub-items is nested.
-                const id = record.id || (record.data ? record.data.id : null);
-            
-                if (!id || !field) {
-                  console.warn('Cell edit ignored: missing id or field.', args);
+                const { col, row, field, value } = args;
+
+                // Use the instance's method to get the canonical record for the edited cell.
+                // This is more reliable for tree structures.
+                const record = instanceRef.current.getRecordByCell(col, row);
+
+                if (!record || !record.id || !field) {
+                  console.warn('Cell edit ignored: could not determine record ID or field.', { args, record });
                   return;
                 }
+                
+                const id = record.id;
             
                 let formattedValue = value;
+                // Ensure date values are formatted correctly as 'YYYY-MM-DD' for the backend.
                 if ((field === 'start' || field === 'end') && value) {
-                    // The date editor returns a value that needs to be consistently formatted.
-                    // formatDate expects a Date object, so we create one from the editor's value.
+                    // Create a Date object from the editor's value and format it.
                     formattedValue = formatDate(new Date(value));
                 }
 
                 const changedData = { [field]: formattedValue };
-                console.log(`EVENT: User edited cell. Task ID: ${id}, changed:`, changedData);
+                console.log(`EVENT: User edited cell. Task ID: ${id}. Sending to API:`, changedData);
             
                 const result = await apiCall('task', 'POST', { id, changedData });
             
                 if (result.success) {
-                  // The gantt instance is already updated. We just need to sync our React state.
-                  console.log("SYNC: Cell edit successful. Updating React state.");
+                  // The UI in the VTable instance is already updated.
+                  // We now sync our React state to match, which serves as the source of truth.
+                  console.log("SYNC: API call successful. Updating React state.");
                   setRecords(currentRecords => {
-                    // Need a recursive function to update nested records in tree data
                     const updateNode = (nodes) => {
                         return nodes.map(node => {
                             if (node.id === id) {
+                                // Important: Merge with the *formatted* value
                                 return { ...node, ...changedData };
                             }
                             if (node.sub) {
@@ -311,8 +316,9 @@ const GanttChart = () => {
                     return updateNode(currentRecords);
                   });
                 } else {
+                  // If the API call fails, revert the change by refetching data from the server.
                   alert('更新失败，正在从服务器恢复数据...');
-                  fetchData(); // Re-fetch to revert to the last known good state
+                  fetchData();
                 }
             };
             
