@@ -314,8 +314,10 @@ const GanttChart = () => {
                   const newMarkLine = {
                     date: formatDate(data.startDate),
                     content: value || '新建里程碑',
-                    // Default styles
-                    contentStyle: { color: '#fff', fontSize: '12px' },
+                    // Styling simplified as per user's final instruction.
+                    contentStyle: {
+                        color: '#fff'
+                    },
                     style: { lineWidth: 1, lineColor: 'red' }
                   };
                   
