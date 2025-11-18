@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useParams } from 'react-router-dom';
-import { Layout, Menu, Card, Table, Tag, Button, Space, Typography } from 'antd';
+import { Layout, Menu, Card, Table, Tag, Button, Space, Typography, Spin, Alert } from 'antd';
 import { MenuUnfoldOutlined, MenuFoldOutlined } from '@ant-design/icons';
 import { projects, locations } from './mockData';
 import GanttChart from './GanttChart';
@@ -40,6 +40,91 @@ const LocationSelectionPage = () => {
     </Card>
   );
 };
+
+ // --- New Store Details Page ---
+ const StoreDetailsPage = () => {
+   const [storeDetails, setStoreDetails] = useState([]);
+   const [loading, setLoading] = useState(false);
+   const [error, setError] = useState(null);
+ 
+   const fetchData = async () => {
+     console.log("Attempting to fetch store details from API...");
+     setLoading(true);
+     setError(null);
+     try {
+       const response = await fetch('/api/store-details');
+       if (!response.ok) {
+         throw new Error(`Network response was not ok: ${response.statusText}`);
+       }
+       const data = await response.json();
+       console.log("SUCCESS: Loaded store details from API.", data);
+ 
+       // 确保 data.storeDetails 是数组
+       if (Array.isArray(data.storeDetails)) {
+         setStoreDetails(data.storeDetails);
+       } else {
+         console.error("ERROR: API response for storeDetails is not an array.", data);
+         setError("数据格式错误");
+       }
+     } catch (error) {
+       console.error('ERROR: Failed to fetch or parse store details from API.', error);
+       setError('数据加载失败，请检查网络或联系管理员！');
+     } finally {
+       setLoading(false);
+     }
+   };
+ 
+   useEffect(() => {
+     fetchData();
+   }, []);
+ 
+   const handleRefresh = () => {
+     console.log("User clicked refresh button. Fetching store details again...");
+     fetchData();
+   };
+ 
+   const columns = [
+     { title: '排序', dataIndex: 'sort_order', key: 'sort_order' },
+     { title: '门店名称（区位名称）', dataIndex: 'store_name', key: 'store_name' },
+     { title: '所处区域', dataIndex: 'district', key: 'district' },
+     { title: '建筑面积', dataIndex: 'building_area', key: 'building_area' },
+     { title: '套内实际面积', dataIndex: 'usable_area', key: 'usable_area' },
+     { title: '租金', dataIndex: 'rent', key: 'rent' },
+     { title: '免租期', dataIndex: 'rent_free_period', key: 'rent_free_period' },
+     { title: '物业费', dataIndex: 'property_fee', key: 'property_fee' },
+     { title: '电费', dataIndex: 'electricity_fee', key: 'electricity_fee' },
+     { title: '水费', dataIndex: 'water_fee', key: 'water_fee' },
+     { title: '付款方式', dataIndex: 'payment_method', key: 'payment_method' },
+     { title: '租金递增方式', dataIndex: 'rent_increase', key: 'rent_increase' },
+     { title: '合同年限', dataIndex: 'contract_years', key: 'contract_years' },
+     { title: '门店属性', dataIndex: 'properties', key: 'properties' },
+     { title: '开办杂费', dataIndex: 'startup_costs', key: 'startup_costs' },
+     { title: '筹开进度', dataIndex: 'progress', key: 'progress' },
+     { title: '预估回本周期', dataIndex: 'roi_period', key: 'roi_period' },
+   ];
+ 
+   return (
+     <Card
+       title="门店详情"
+       extra={
+         <Button onClick={handleRefresh} disabled={loading}>
+           {loading ? '刷新中...' : '刷新数据'}
+         </Button>
+       }
+     >
+       {error && <Alert message={error} type="error" showIcon />}
+       <Spin spinning={loading}>
+         <Table
+           columns={columns}
+           dataSource={storeDetails}
+           rowKey="sort_order"
+           scroll={{ x: 'max-content' }}
+           pagination={false} // 如果数据量大，可以考虑开启分页
+         />
+       </Spin>
+     </Card>
+   );
+ };
 
 // --- Project Detail Page (with ViewMode switcher) ---
 // 这个组件内的 div 保持简单，不需要特殊样式
@@ -92,6 +177,10 @@ function App() {
                key: 'd1-gantt',
                label: <Link to="/d1-gantt">D1甘特图测试</Link>,
             },
+            {
+               key: 'store-details',
+               label: <Link to="/store-details">门店详情</Link>,
+            },
           ]}
         />
       </Sider>
@@ -115,6 +204,7 @@ function App() {
             <Route path="/" element={<LocationSelectionPage />} />
             <Route path="/projects/:projectId" element={<ProjectPage />} />
             <Route path="/d1-gantt" element={<D1GanttPage />} />
+            <Route path="/store-details" element={<StoreDetailsPage />} />
           </Routes>
         </Content>
         
