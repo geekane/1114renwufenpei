@@ -157,5 +157,43 @@ export async function onRequest(context) {
   }
 
 
+  // Route: GET /api/store-details
+  // Fetches store details from the database
+  if (request.method === 'GET' && pathSegments[0] === 'store-details') {
+    try {
+      console.log("Attempting to fetch store details from D1...");
+      if (!env.DB) {
+        throw new Error("D1 database binding 'DB' not found. Check wrangler.toml.");
+      }
+
+      console.log("Preparing D1 statement for store_details...");
+      const storeDetailsStmt = env.DB.prepare('SELECT * FROM store_details ORDER BY sort_order');
+      console.log("Statement prepared. Executing query...");
+      
+      const storeDetailsResult = await storeDetailsStmt.all();
+      console.log("D1 query execution complete.");
+      console.log(`Found ${storeDetailsResult.results.length} store details.`);
+
+      return jsonResponse({
+        storeDetails: storeDetailsResult.results,
+      });
+    } catch (e) {
+      console.error('--- FATAL D1 ERROR ---');
+      console.error('Error fetching store details from D1:', e);
+      console.error('Error Name:', e.name);
+      console.error('Error Message:', e.message);
+      console.error('Error Cause:', e.cause);
+      console.error('--- END FATAL D1 ERROR ---');
+      return jsonResponse({
+        error: 'Failed to fetch store details from D1. See server logs for details.',
+        details: {
+          name: e.name,
+          message: e.message,
+          cause: e.cause,
+        },
+      }, 500);
+    }
+  }
+
   return new Response('Not Found', { status: 404 });
 }
