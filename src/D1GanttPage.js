@@ -366,7 +366,7 @@ const GanttChart = () => {
                 <button style={timeScale === 'day' ? activeButtonStyle : buttonStyle} onClick={() => setTimeScale('day')}>日</button>
                 <button style={timeScale === 'week' ? activeButtonStyle : buttonStyle} onClick={() => setTimeScale('week')}>周</button>
                 <button style={timeScale === 'month' ? activeButtonStyle : buttonStyle} onClick={() => setTimeScale('month')}>月</button>
-                <button style={{ ...buttonStyle, marginLeft: '20px' }} onClick={handleUpdateTask}>更新任务2</button>
+                <button style={{ ...buttonStyle, marginLeft: '20px' }} onClick={handleUpdateTask}>更新任务</button>
                 
                 {/* 新增的刷新按钮 */}
                 <button
