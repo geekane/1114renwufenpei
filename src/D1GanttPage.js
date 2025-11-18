@@ -280,7 +280,14 @@ const GanttChart = () => {
                   return;
                 }
             
-                const changedData = { [field]: value };
+                let formattedValue = value;
+                if ((field === 'start' || field === 'end') && value) {
+                    // The date editor returns a value that needs to be consistently formatted.
+                    // formatDate expects a Date object, so we create one from the editor's value.
+                    formattedValue = formatDate(new Date(value));
+                }
+
+                const changedData = { [field]: formattedValue };
                 console.log(`EVENT: User edited cell. Task ID: ${id}, changed:`, changedData);
             
                 const result = await apiCall('task', 'POST', { id, changedData });
@@ -456,33 +463,6 @@ const GanttChart = () => {
         fetchData(); // 直接调用封装好的函数
     };
 
-    const handleUpdateTask = () => {
-        if (instanceRef.current) {
-            const taskIdToUpdate = 2;
-            const newDateInfo = {
-                // Per your request, the date update process is removed.
-                // start: '2025-10-08',
-                // end: '2025-10-15',
-                title: '筹划 (已延期)'
-            };
-    
-            console.log(`正在通过 setRecords 更新任务 ID: ${taskIdToUpdate}`);
-    
-            // 1. Set a flag to indicate this update is from our code, not the user.
-            isUpdatingExternally.current = true;
-    
-            // 2. Update React's state, which is the single source of truth.
-            // The useEffect hook will then sync this change to the Gantt instance.
-            setRecords(currentRecords =>
-                currentRecords.map(record =>
-                    record.id === taskIdToUpdate ? { ...record, ...newDateInfo } : record
-                )
-            );
-    
-            alert(`任务 ${taskIdToUpdate} 已更新!`);
-        }
-    };
-    
     const buttonStyle = { margin: '0 5px', padding: '5px 10px', cursor: 'pointer', border: '1px solid #ccc', borderRadius: '4px' };
     const activeButtonStyle = { ...buttonStyle, backgroundColor: '#389BFF', color: 'white', borderColor: '#389BFF' };
     
@@ -493,7 +473,6 @@ const GanttChart = () => {
                 <button style={timeScale === 'day' ? activeButtonStyle : buttonStyle} onClick={() => setTimeScale('day')}>日</button>
                 <button style={timeScale === 'week' ? activeButtonStyle : buttonStyle} onClick={() => setTimeScale('week')}>周</button>
                 <button style={timeScale === 'month' ? activeButtonStyle : buttonStyle} onClick={() => setTimeScale('month')}>月</button>
-                <button style={{ ...buttonStyle, marginLeft: '20px' }} onClick={handleUpdateTask}>更新任务</button>
                 
                 {/* 新增的刷新按钮 */}
                 <button
