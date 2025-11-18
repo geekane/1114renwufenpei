@@ -198,7 +198,11 @@ const GanttChart = () => {
             
             const option = {
                 records, // Uses the state initialized from localStorage
-                markLine: markLines, // Uses the state initialized from localStorage
+                markLine: {
+                    markLines: markLines, // 传递标记线数据
+                    labelField: 'date', // 指定使用 'date' 字段作为标签
+                    contentField: 'content' // 指定使用 'content' 字段作为显示内容
+                }, // Uses the state initialized from localStorage
                 taskListTable: { columns, tableWidth: 390, theme: { headerStyle: { borderColor: '#e1e4e8', borderLineWidth: 0, fontSize: 18, fontWeight: 'bold', color: 'red' }, bodyStyle: { borderColor: '#e1e4e8', borderLineWidth: 0, fontSize: 16, color: '#4D4D4D', bgColor: '#FFF' } } },
                 frame: { outerFrameStyle: { borderLineWidth: 0, borderColor: 'red', cornerRadius: 8 } },
                 grid: { backgroundColor: '#f0f0fb', horizontalLine: { lineWidth: 2, lineColor: '#d5d9ee' } },
