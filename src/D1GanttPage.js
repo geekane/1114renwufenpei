@@ -2,37 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import * as VTable from '@visactor/vtable';
 import * as VTableGantt from '@visactor/vtable-gantt';
 import { DateInputEditor, InputEditor } from '@visactor/vtable-editors';
-import { INITIAL_RECORDS } from './mockData';
-
-const getInitialRecords = () => {
-    console.log("Attempting to get initial records...");
-    try {
-        const savedRecords = localStorage.getItem('ganttRecords');
-        if (savedRecords) {
-            console.log("SUCCESS: Loaded records from localStorage.");
-            return JSON.parse(savedRecords);
-        }
-    } catch (error) {
-        console.error('ERROR: Failed to parse records from localStorage, using initial records.', error);
-    }
-    console.log("INFO: No records in localStorage, using initial records from mockData.js.");
-    return INITIAL_RECORDS;
-};
-
-const getInitialMarkLines = () => {
-    console.log("Attempting to get initial marklines...");
-    try {
-        const savedMarkLines = localStorage.getItem('ganttMarkLines');
-        if (savedMarkLines) {
-            console.log("SUCCESS: Loaded marklines from localStorage.");
-            return JSON.parse(savedMarkLines);
-        }
-    } catch (error) {
-        console.error('ERROR: Failed to parse marklines from localStorage, using empty array.', error);
-    }
-    console.log("INFO: No marklines in localStorage, using empty array.");
-    return [];
-};
+// Data is now fetched from the API.
 
 function formatDate(date) {
     const year = date.getFullYear();
@@ -162,30 +132,48 @@ const GanttChart = () => {
     const containerRef = useRef(null);
     const instanceRef = useRef(null);
     const isUpdatingExternally = useRef(false);
-    // Use lazy initial state to ensure getInitial* is called only once.
-    const [records, setRecords] = useState(getInitialRecords);
-    const [markLines, setMarkLines] = useState(getInitialMarkLines);
+    const [records, setRecords] = useState([]);
+    const [markLines, setMarkLines] = useState([]);
     const [timeScale, setTimeScale] = useState('day');
+    const [isLoading, setIsLoading] = useState(false); // 新增一个 loading 状态
 
-    // This useEffect handles SAVING records to localStorage whenever the `records` state changes.
-    useEffect(() => {
-        console.log("EVENT: `records` state changed. SAVING to localStorage.");
+    // 1. 将数据获取逻辑封装成一个独立的函数
+    const fetchData = async () => {
+        console.log("Attempting to fetch data from API...");
+        setIsLoading(true); // 开始加载，设置 loading 状态
         try {
-            localStorage.setItem('ganttRecords', JSON.stringify(records));
-        } catch (error) {
-            console.error('ERROR: Failed to save records to localStorage', error);
-        }
-    }, [records]);
+            const response = await fetch('/api/data');
+            if (!response.ok) {
+                throw new Error(`Network response was not ok: ${response.statusText}`);
+            }
+            const data = await response.json();
+            console.log("SUCCESS: Loaded data from API.", data);
 
-    // This useEffect handles SAVING markLines to localStorage whenever the `markLines` state changes.
-    useEffect(() => {
-        console.log("EVENT: `markLines` state changed. SAVING to localStorage.");
-        try {
-            localStorage.setItem('ganttMarkLines', JSON.stringify(markLines));
+            // 确保 data.records 是数组
+            if (Array.isArray(data.records)) {
+                setRecords(data.records);
+            } else {
+                console.error("ERROR: API response for records is not an array.", data);
+            }
+            // 确保 data.markLines 是数组
+            if (Array.isArray(data.markLines)) {
+                setMarkLines(data.markLines);
+            } else {
+                setMarkLines([]);
+            }
         } catch (error) {
-            console.error('ERROR: Failed to save markLines to localStorage', error);
+            console.error('ERROR: Failed to fetch or parse data from API.', error);
+            // 可以在这里添加一些用户提示，比如弹窗
+            alert('数据加载失败，请检查网络或联系管理员！');
+        } finally {
+            setIsLoading(false); // 加载结束，无论成功失败都取消 loading
         }
-    }, [markLines]);
+    };
+
+    // 2. 在组件加载时调用这个函数
+    useEffect(() => {
+        fetchData();
+    }, []); // 空依赖数组确保只在首次加载时运行
 
     // This useEffect handles the INITIALIZATION of the Gantt chart instance.
     // It runs only ONCE when the component mounts.
@@ -335,6 +323,12 @@ const GanttChart = () => {
         }
     }, [timeScale]);
 
+    // 3. 定义按钮的点击处理函数
+    const handleRefresh = () => {
+        console.log("User clicked refresh button. Fetching data again...");
+        fetchData(); // 直接调用封装好的函数
+    };
+
     const handleUpdateTask = () => {
         if (instanceRef.current) {
             const taskIdToUpdate = 2;
@@ -373,6 +367,15 @@ const GanttChart = () => {
                 <button style={timeScale === 'week' ? activeButtonStyle : buttonStyle} onClick={() => setTimeScale('week')}>周</button>
                 <button style={timeScale === 'month' ? activeButtonStyle : buttonStyle} onClick={() => setTimeScale('month')}>月</button>
                 <button style={{ ...buttonStyle, marginLeft: '20px' }} onClick={handleUpdateTask}>更新任务2</button>
+                
+                {/* 新增的刷新按钮 */}
+                <button
+                    style={{ ...buttonStyle, marginLeft: '10px' }}
+                    onClick={handleRefresh}
+                    disabled={isLoading} // 当正在加载时，禁用按钮防止重复点击
+                >
+                    {isLoading ? '正在刷新...' : '刷新同步数据'}
+                </button>
             </div>
             <div ref={containerRef} style={{ flex: 1, width: '100%' }} />
         </div>
