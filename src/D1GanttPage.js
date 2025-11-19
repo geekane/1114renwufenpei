@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
+import { Button, Space } from 'antd'; // 引入 Ant Design 的 Button 和 Space 组件
 import * as VTable from '@visactor/vtable';
 import * as VTableGantt from '@visactor/vtable-gantt';
 import { DateInputEditor, InputEditor } from '@visactor/vtable-editors';
@@ -470,25 +471,23 @@ const GanttChart = () => {
         fetchData(); // 直接调用封装好的函数
     };
 
-    const buttonStyle = { margin: '0 5px', padding: '5px 10px', cursor: 'pointer', border: '1px solid #ccc', borderRadius: '4px' };
-    const activeButtonStyle = { ...buttonStyle, backgroundColor: '#389BFF', color: 'white', borderColor: '#389BFF' };
-    
     return (
         <div style={{ height: '100%', width: '100%', display: 'flex', flexDirection: 'column', position: 'relative' }}>
-            <div style={{ padding: '10px', borderBottom: '1px solid #eee' }}>
-                <span>时间粒度：</span>
-                <button style={timeScale === 'day' ? activeButtonStyle : buttonStyle} onClick={() => setTimeScale('day')}>日</button>
-                <button style={timeScale === 'week' ? activeButtonStyle : buttonStyle} onClick={() => setTimeScale('week')}>周</button>
-                <button style={timeScale === 'month' ? activeButtonStyle : buttonStyle} onClick={() => setTimeScale('month')}>月</button>
+            <div style={{ padding: '10px', borderBottom: '1px solid #eee', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <Space>
+                    <span>时间粒度：</span>
+                    <Button type={timeScale === 'day' ? 'primary' : 'default'} onClick={() => setTimeScale('day')}>日</Button>
+                    <Button type={timeScale === 'week' ? 'primary' : 'default'} onClick={() => setTimeScale('week')}>周</Button>
+                    <Button type={timeScale === 'month' ? 'primary' : 'default'} onClick={() => setTimeScale('month')}>月</Button>
+                </Space>
                 
-                {/* 新增的刷新按钮 */}
-                <button
-                    style={{ ...buttonStyle, marginLeft: '10px' }}
+                <Button
                     onClick={handleRefresh}
-                    disabled={isLoading} // 当正在加载时，禁用按钮防止重复点击
+                    disabled={isLoading}
+                    loading={isLoading}
                 >
                     {isLoading ? '正在刷新...' : '刷新同步数据'}
-                </button>
+                </Button>
             </div>
             <div ref={containerRef} style={{ flex: 1, width: '100%' }} />
         </div>
