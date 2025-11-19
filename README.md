@@ -208,11 +208,14 @@
 .
 ├── public/                     # 静态文件
 ├── src/
+│   ├── App.css                 # 应用级样式
 │   ├── App.js                  # 主应用组件，路由配置
 │   ├── D1GanttPage.js          # 特定门店的甘特图页面组件
 │   ├── GanttChart.js           # 甘特图核心组件
-│   ├── mockData.js             # 模拟数据 (部分已废弃，改为 D1)
-│   └── ...                     # 其他前端文件
+│   ├── index.css               # 全局样式
+│   ├── index.js                # 应用入口文件
+│   ├── mockData.js             # 模拟数据 (部分已废弃，用于 LocationSelectionPage 和 ProjectPage)
+│   └── Responsive.css          # 响应式样式
 ├── functions/
 │   └── api/
 │       └── [[path]].js         # Cloudflare Workers API 路由处理
