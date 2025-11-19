@@ -235,11 +235,11 @@ function App() {
           items={[
            {
              key: 'store-details',
-             label: <Link to="/store-details">门店详情</Link>,
+             label: <Link to="/store-details">全部门店详情</Link>,
           },
             {
                key: 'd1-gantt',
-               label: <Link to="/d1-gantt">D1甘特图测试</Link>,
+               label: <Link to="/d1-gantt">具体门店进度</Link>,
             },
           ]}
         />
