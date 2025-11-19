@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useParams } from 'react-router-dom';
 import { Layout, Menu, Card, Table, Tag, Button, Space, Typography, Spin, Alert, Upload, message } from 'antd';
-import { MenuUnfoldOutlined, MenuFoldOutlined, UploadOutlined, PaperClipOutlined, FileTextOutlined } from '@ant-design/icons';
+import { MenuUnfoldOutlined, MenuFoldOutlined, UploadOutlined, PaperClipOutlined, FileTextOutlined, ShopOutlined, BarsOutlined } from '@ant-design/icons';
 import { projects, locations } from './mockData';
 import GanttChart from './GanttChart';
 import D1GanttPage from './D1GanttPage'; // Import the new page
@@ -219,6 +219,42 @@ const ProjectPage = () => {
 // --- Main App Layout ---
 function App() {
   const [collapsed, setCollapsed] = useState(false);
+  const [stores, setStores] = useState([]);
+
+  useEffect(() => {
+    // Fetch store list for the menu
+    const fetchStores = async () => {
+      try {
+        const response = await fetch('/api/store-details');
+        const data = await response.json();
+        if (Array.isArray(data.storeDetails)) {
+          setStores(data.storeDetails);
+        }
+      } catch (error) {
+        console.error("Failed to fetch stores for menu:", error);
+      }
+    };
+    fetchStores();
+  }, []);
+
+  const menuItems = [
+    {
+      key: 'store-management',
+      icon: <ShopOutlined />,
+      label: '门店管理',
+      children: [
+        {
+          key: 'store-details',
+          icon: <BarsOutlined />,
+          label: <Link to="/store-details">全部门店详情</Link>,
+        },
+        ...stores.map(store => ({
+          key: store.store_id,
+          label: <Link to={`/gantt/${store.store_id}`}>{store.store_name}</Link>,
+        })),
+      ],
+    },
+  ];
 
   return (
     <Layout style={{ minHeight: '100vh' }}>
@@ -235,13 +271,9 @@ function App() {
         <Menu
           theme="dark"
           mode="inline"
+          defaultOpenKeys={['store-management']}
           defaultSelectedKeys={['store-details']}
-          items={[
-           {
-             key: 'store-details',
-             label: <Link to="/store-details">全部门店详情</Link>,
-           },
-          ]}
+          items={menuItems}
         />
       </Sider>
       <Layout>
