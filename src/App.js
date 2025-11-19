@@ -113,7 +113,11 @@ const LocationSelectionPage = () => {
         key: 'store_name', 
         width: 120, 
         fixed: 'left',
-        render: text => <span style={{ fontWeight: 'bold', color: '#1890ff' }}>{text}</span>
+        render: (text, record) => (
+          <Link to={`/gantt/${record.store_id}`} style={{ fontWeight: 'bold' }}>
+            {text}
+          </Link>
+        )
     },
     // 3. 新增：资料操作列 (上传按钮)
     {
@@ -236,11 +240,7 @@ function App() {
            {
              key: 'store-details',
              label: <Link to="/store-details">全部门店详情</Link>,
-          },
-            {
-               key: 'd1-gantt',
-               label: <Link to="/d1-gantt">具体门店进度</Link>,
-            },
+           },
           ]}
         />
       </Sider>
@@ -264,7 +264,7 @@ function App() {
             <Route path="/store-details" element={<StoreDetailsPage />} />
             <Route path="/" element={<LocationSelectionPage />} />
             <Route path="/projects/:projectId" element={<ProjectPage />} />
-            <Route path="/d1-gantt" element={<D1GanttPage />} />
+            <Route path="/gantt/:storeId" element={<D1GanttPage />} />
           </Routes>
         </Content>
         

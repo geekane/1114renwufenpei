@@ -45,23 +45,23 @@ export async function onRequest(context) {
     }
   }
 
-  // Route: GET /api/data
-  // Fetches initial records and marklines
-  if (request.method === 'GET' && pathSegments[0] === 'data') {
+  // Route: GET /api/data/:storeId
+  // Fetches initial records and marklines for a specific store
+  if (request.method === 'GET' && pathSegments[0] === 'data' && pathSegments[1]) {
+    const storeId = pathSegments[1];
     try {
-      console.log("Attempting to fetch data from D1...");
+      console.log(`Attempting to fetch data from D1 for store_id: ${storeId}...`);
       if (!env.DB) {
           throw new Error("D1 database binding 'DB' not found. Check wrangler.toml.");
       }
 
-      console.log("Preparing D1 statements for gantt_tasks and gantt_marklines...");
-      const tasksStmt = env.DB.prepare('SELECT * FROM gantt_tasks');
-      const marklinesStmt = env.DB.prepare('SELECT * FROM gantt_marklines');
+      const tasksStmt = env.DB.prepare('SELECT * FROM gantt_tasks WHERE store_id = ?').bind(storeId);
+      const marklinesStmt = env.DB.prepare('SELECT * FROM gantt_marklines WHERE store_id = ?').bind(storeId);
       console.log("Statements prepared. Executing batch...");
 
       const [tasksResult, marklinesResult] = await env.DB.batch([tasksStmt, marklinesStmt]);
       console.log("D1 batch execution complete.");
-      console.log(`Found ${tasksResult.results.length} tasks and ${marklinesResult.results.length} marklines.`);
+      console.log(`Found ${tasksResult.results.length} tasks and ${marklinesResult.results.length} marklines for store ${storeId}.`);
 
       // Parse JSON strings back into objects for the frontend
       const marklines = marklinesResult.results.map(line => ({
@@ -93,12 +93,12 @@ export async function onRequest(context) {
   }
 
   // Route: POST /api/task
-  // Updates a single task
+  // Updates a single task for a specific store
   if (request.method === 'POST' && pathSegments[0] === 'task') {
     try {
-      const { id, changedData } = await request.json();
-      if (!id || !changedData) {
-        return jsonResponse({ error: 'Missing id or changedData' }, 400);
+      const { id, changedData, storeId } = await request.json();
+      if (!id || !changedData || !storeId) {
+        return jsonResponse({ error: 'Missing id, changedData, or storeId' }, 400);
       }
 
       // Build the SET part of the SQL query dynamically
@@ -106,8 +106,8 @@ export async function onRequest(context) {
       const values = Object.values(changedData);
       const setClause = fields.map(field => `${field} = ?`).join(', ');
 
-      const stmt = env.DB.prepare(`UPDATE gantt_tasks SET ${setClause} WHERE id = ?`);
-      await stmt.bind(...values, id).run();
+      const stmt = env.DB.prepare(`UPDATE gantt_tasks SET ${setClause} WHERE id = ? AND store_id = ?`);
+      await stmt.bind(...values, id, storeId).run();
 
       return jsonResponse({ success: true });
     } catch (e) {
@@ -121,28 +121,29 @@ export async function onRequest(context) {
   }
   
   // Route: POST /api/markline
-  // Creates or updates a markline (UPSERT)
+  // Creates or updates a markline for a specific store (UPSERT)
   if (request.method === 'POST' && pathSegments[0] === 'markline') {
     try {
         const markline = await request.json();
-        if (!markline || !markline.date) {
-            return jsonResponse({ error: 'Invalid markline data' }, 400);
+        if (!markline || !markline.date || !markline.store_id) {
+            return jsonResponse({ error: 'Invalid markline data, missing date or store_id' }, 400);
         }
 
-        const { date, content, style, contentStyle } = markline;
+        const { date, content, style, contentStyle, store_id } = markline;
 
-        // Use UPSERT logic: insert, or on conflict (date exists), update.
+        // Use UPSERT logic: insert, or on conflict (date and store_id exists), update.
         const stmt = env.DB.prepare(
-            'INSERT INTO gantt_marklines (date, content, style, contentStyle) VALUES (?, ?, ?, ?) ' +
-            'ON CONFLICT(date) DO UPDATE SET content=excluded.content, style=excluded.style, contentStyle=excluded.contentStyle'
+            'INSERT INTO gantt_marklines (date, content, style, contentStyle, store_id) VALUES (?, ?, ?, ?, ?) ' +
+            'ON CONFLICT(date, store_id) DO UPDATE SET content=excluded.content, style=excluded.style, contentStyle=excluded.contentStyle'
         );
         
         // Stringify style objects for storage
         await stmt.bind(
-            date, 
-            content, 
-            JSON.stringify(style || {}), 
-            JSON.stringify(contentStyle || {})
+            date,
+            content,
+            JSON.stringify(style || {}),
+            JSON.stringify(contentStyle || {}),
+            store_id
         ).run();
 
         return jsonResponse({ success: true });

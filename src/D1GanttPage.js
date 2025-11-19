@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { useParams } from 'react-router-dom';
 import * as VTable from '@visactor/vtable';
 import * as VTableGantt from '@visactor/vtable-gantt';
 import { DateInputEditor, InputEditor } from '@visactor/vtable-editors';
@@ -152,33 +153,34 @@ const getScalesConfig = (scaleType) => {
 };
 
 const GanttChart = () => {
+    const { storeId } = useParams(); // Get storeId from URL
     const containerRef = useRef(null);
     const instanceRef = useRef(null);
     const isUpdatingExternally = useRef(false);
     const [records, setRecords] = useState([]);
     const [markLines, setMarkLines] = useState([]);
     const [timeScale, setTimeScale] = useState('day');
-    const [isLoading, setIsLoading] = useState(false); // 新增一个 loading 状态
+    const [isLoading, setIsLoading] = useState(false);
 
-    // 1. 将数据获取逻辑封装成一个独立的函数
+    // 1. Fetch data for the specific store
     const fetchData = async () => {
-        console.log("Attempting to fetch data from API...");
-        setIsLoading(true); // 开始加载，设置 loading 状态
+        if (!storeId) return;
+        console.log(`Attempting to fetch data from API for storeId: ${storeId}...`);
+        setIsLoading(true);
         try {
-            const response = await fetch('/api/data');
+            const response = await fetch(`/api/data/${storeId}`);
             if (!response.ok) {
                 throw new Error(`Network response was not ok: ${response.statusText}`);
             }
             const data = await response.json();
             console.log("SUCCESS: Loaded data from API.", data);
 
-            // 确保 data.records 是数组
             if (Array.isArray(data.records)) {
                 setRecords(data.records);
             } else {
                 console.error("ERROR: API response for records is not an array.", data);
+                setRecords([]); // Reset to empty array on error
             }
-            // 确保 data.markLines 是数组
             if (Array.isArray(data.markLines)) {
                 setMarkLines(data.markLines);
             } else {
@@ -186,17 +188,16 @@ const GanttChart = () => {
             }
         } catch (error) {
             console.error('ERROR: Failed to fetch or parse data from API.', error);
-            // 可以在这里添加一些用户提示，比如弹窗
             alert('数据加载失败，请检查网络或联系管理员！');
         } finally {
-            setIsLoading(false); // 加载结束，无论成功失败都取消 loading
+            setIsLoading(false);
         }
     };
 
-    // 2. 在组件加载时调用这个函数
+    // 2. Re-fetch data when storeId changes
     useEffect(() => {
         fetchData();
-    }, []); // 空依赖数组确保只在首次加载时运行
+    }, [storeId]);
 
     // This useEffect handles the INITIALIZATION of the Gantt chart instance.
     // It runs only ONCE when the component mounts.
@@ -292,9 +293,9 @@ const GanttChart = () => {
                 }
 
                 const changedData = { [field]: formattedValue };
-                console.log(`EVENT: User edited cell. Task ID: ${id}. Sending to API:`, changedData);
+                console.log(`EVENT: User edited cell. Task ID: ${id}. Sending to API for store ${storeId}:`, changedData);
             
-                const result = await apiCall('task', 'POST', { id, changedData });
+                const result = await apiCall('task', 'POST', { id, changedData, storeId });
             
                 if (result.success) {
                   // The UI in the VTable instance is already updated.
@@ -327,7 +328,7 @@ const GanttChart = () => {
                   const newMarkLine = {
                     date: formatDate(data.startDate),
                     content: value || '新建里程碑',
-                    // Styling simplified as per user's final instruction.
+                    store_id: storeId, // Associate with the current store
                     contentStyle: {
                         color: '#fff'
                     },
@@ -346,7 +347,7 @@ const GanttChart = () => {
             const handleMarkLineClick = ({ data, position }) => {
                 createPopup({ date: data.date, content: data.content }, position, async value => {
                   // Create the updated object, ensuring we don't send undefined values
-                  const updatedMarkLine = { ...data, content: value || data.content };
+                  const updatedMarkLine = { ...data, content: value || data.content, store_id: storeId };
                   
                   // The backend handles UPSERT, so we just POST the updated object.
                   const result = await apiCall('markline', 'POST', updatedMarkLine);
@@ -408,9 +409,9 @@ const GanttChart = () => {
                     if (changedRecord.progress !== originalRecord.progress) changedData.progress = changedRecord.progress;
             
                     if (Object.keys(changedData).length > 0) {
-                        console.log(`EVENT: \`change_task\` (drag/resize) fired. Task ID: ${changedRecord.id}, changed:`, changedData);
+                        console.log(`EVENT: \`change_task\` (drag/resize) fired for store ${storeId}. Task ID: ${changedRecord.id}, changed:`, changedData);
                         
-                        apiCall('task', 'POST', { id: changedRecord.id, changedData })
+                        apiCall('task', 'POST', { id: changedRecord.id, changedData, storeId })
                           .then(result => {
                               if (!result.success) {
                                   alert('同步任务变更失败，正在从服务器恢复数据...');
