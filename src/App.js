@@ -282,7 +282,7 @@ function App() {
               className: 'trigger',
               onClick: () => setCollapsed(!collapsed),
             })}
-            <div style={{ fontSize: '18px', fontWeight: 'bold', marginLeft: '10px' }}>竞潮玩工作联通系统</div>
+            <div style={{ fontSize: '18px', fontWeight: 'bold', marginLeft: '10px' }}>内部工作联通系统</div>
         </Header>
         
         {/* --- Content Area --- */}
