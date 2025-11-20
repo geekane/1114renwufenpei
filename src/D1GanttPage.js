@@ -412,7 +412,7 @@ const GanttChart = () => {
         setIsLoading(true);
         try {
             console.log("User clicked save changes button. Sending data to API...", records);
-            const result = await apiCall('tasks', 'POST', { records });
+            const result = await apiCall('tasks', 'POST', { records, storeId });
             
             if (result.success) {
                 message.success('更改已成功保存');

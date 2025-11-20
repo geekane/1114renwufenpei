@@ -13,27 +13,27 @@ export async function onRequest(context) {
   const pathSegments = params.path || [];
 
   // Route: POST /api/tasks
-  // Saves all tasks in bulk, overwriting existing data.
+  // Saves all tasks in bulk for a specific store, overwriting existing data for that store.
   if (request.method === 'POST' && pathSegments[0] === 'tasks') {
     try {
-      const { records } = await request.json();
-      if (!Array.isArray(records)) {
-        return jsonResponse({ error: 'Invalid data format, expected { records: [] }' }, 400);
+      const { records, storeId } = await request.json();
+      if (!Array.isArray(records) || !storeId) {
+        return jsonResponse({ error: 'Invalid data format, expected { records: [], storeId: "..." }' }, 400);
       }
 
       const statements = [
-        // 1. Delete all existing tasks
-        env.DB.prepare('DELETE FROM gantt_tasks'),
+        // 1. Delete all existing tasks for the given storeId
+        env.DB.prepare('DELETE FROM gantt_tasks WHERE store_id = ?').bind(storeId),
         // 2. Prepare insert statements for all new tasks
         ...records.map(rec => env.DB.prepare(
-          'INSERT INTO gantt_tasks (id, title, start, end, progress, sub, avatar) VALUES (?, ?, ?, ?, ?, ?, ?)'
-        ).bind(rec.id, rec.title, rec.start, rec.end, rec.progress, rec.sub, rec.avatar))
+          'INSERT INTO gantt_tasks (id, title, start, end, progress, avatar, store_id) VALUES (?, ?, ?, ?, ?, ?, ?)'
+        ).bind(rec.id, rec.title, rec.start, rec.end, rec.progress, rec.avatar, storeId))
       ];
       
       // Execute all statements in a single transaction
       await env.DB.batch(statements);
 
-      return jsonResponse({ success: true, message: `Successfully saved ${records.length} tasks.` });
+      return jsonResponse({ success: true, message: `Successfully saved ${records.length} tasks for store ${storeId}.` });
 
     } catch (e) {
       console.error('Error saving tasks to D1:', e);
