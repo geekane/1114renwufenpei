@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useContext, useRef } from 'react';
-import { BrowserRouter as Router, Routes, Route, Link, useParams } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Link, useParams, Navigate } from 'react-router-dom';
 import { Layout, Menu, Card, Table, Tag, Button, Space, Typography, Spin, Alert, Upload, message, Form, Input } from 'antd';
 import { MenuUnfoldOutlined, MenuFoldOutlined, UploadOutlined, PaperClipOutlined, FileTextOutlined, ShopOutlined, BarsOutlined } from '@ant-design/icons';
 import { projects, locations } from './mockData';
@@ -512,9 +512,10 @@ function App() {
         }}>
           <Routes>
             <Route path="/store-details" element={<StoreDetailsPage />} />
-            <Route path="/" element={<LocationSelectionPage />} />
+            <Route path="/" element={<Navigate to="/store-details" replace />} />
             <Route path="/projects/:projectId" element={<ProjectPage />} />
             <Route path="/gantt/:storeId" element={<D1GanttPage />} />
+            <Route path="/location-selection" element={<LocationSelectionPage />} />
           </Routes>
         </Content>
         
