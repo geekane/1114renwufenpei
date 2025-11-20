@@ -273,41 +273,29 @@ const GanttChart = () => {
             const ganttInstance = new VTableGantt.Gantt(containerRef.current, option);
             instanceRef.current = ganttInstance;
 
-            const handleCellEdit = async (args) => {
+            const handleCellEdit = (args) => {
                 const { col, row, field, value } = args;
-
-                // Use the instance's method to get the canonical record for the edited cell.
-                // This is more reliable for tree structures.
                 const record = instanceRef.current.getRecordByCell(col, row);
 
                 if (!record || !record.id || !field) {
-                  console.warn('Cell edit ignored: could not determine record ID or field.', { args, record });
-                  return;
+                    console.warn('Cell edit ignored: could not determine record ID or field.', { args, record });
+                    return;
                 }
-                
+
                 const id = record.id;
-            
                 let formattedValue = value;
-                // Ensure date values are formatted correctly as 'YYYY-MM-DD' for the backend.
                 if ((field === 'start' || field === 'end') && value) {
-                    // Create a Date object from the editor's value and format it.
                     formattedValue = formatDate(new Date(value));
                 }
 
                 const changedData = { [field]: formattedValue };
-                console.log(`EVENT: User edited cell. Task ID: ${id}. Sending to API for store ${storeId}:`, changedData);
-            
-                const result = await apiCall('task', 'POST', { id, changedData, storeId });
-            
-                if (result.success) {
-                  // The UI in the VTable instance is already updated.
-                  // We now sync our React state to match, which serves as the source of truth.
-                  console.log("SYNC: API call successful. Updating React state.");
-                  setRecords(currentRecords => {
+                console.log(`EVENT: User edited cell. Task ID: ${id}. Staging changes.`, changedData);
+
+                // Update React state directly, don't call API yet.
+                setRecords(currentRecords => {
                     const updateNode = (nodes) => {
                         return nodes.map(node => {
                             if (node.id === id) {
-                                // Important: Merge with the *formatted* value
                                 return { ...node, ...changedData };
                             }
                             if (node.sub) {
@@ -317,12 +305,9 @@ const GanttChart = () => {
                         });
                     };
                     return updateNode(currentRecords);
-                  });
-                } else {
-                  // If the API call fails, revert the change by refetching data from the server.
-                  alert('更新失败，正在从服务器恢复数据...');
-                  fetchData();
-                }
+                });
+
+                setHasUnsavedChanges(true); // Mark that there are unsaved changes
             };
             
             const handleMarkLineCreate = ({ data, position }) => {
@@ -374,59 +359,11 @@ const GanttChart = () => {
                     return;
                 }
                 const { records: newRecords } = args;
-            
-                // The `records` variable in this closure holds the state *before* this change.
-                // We can use it to diff against `newRecords`.
-                let changedRecord = null;
-                let originalRecord = null;
-            
-                // Helper to find a record by ID in a nested structure
-                const findRecordById = (id, nodes) => {
-                    for (const node of nodes) {
-                        if (node.id === id) return node;
-                        if (node.sub) {
-                            const found = findRecordById(id, node.sub);
-                            if (found) return found;
-                        }
-                    }
-                    return null;
-                };
-            
-                // Flatten the new records to make searching easier
-                const flatNewRecords = instanceRef.current.getRecords();
-            
-                for (const newRec of flatNewRecords) {
-                    const oldRec = findRecordById(newRec.id, records); // `records` is the state before the update
-                    if (oldRec && (newRec.start !== oldRec.start || newRec.end !== oldRec.end || newRec.progress !== oldRec.progress)) {
-                        changedRecord = newRec;
-                        originalRecord = oldRec;
-                        break;
-                    }
-                }
-            
-                if (changedRecord && originalRecord) {
-                    const changedData = {};
-                    if (changedRecord.start !== originalRecord.start) changedData.start = changedRecord.start;
-                    if (changedRecord.end !== originalRecord.end) changedData.end = changedRecord.end;
-                    if (changedRecord.progress !== originalRecord.progress) changedData.progress = changedRecord.progress;
-            
-                    if (Object.keys(changedData).length > 0) {
-                        console.log(`EVENT: \`change_task\` (drag/resize) fired for store ${storeId}. Task ID: ${changedRecord.id}, changed:`, changedData);
-                        
-                        apiCall('task', 'POST', { id: changedRecord.id, changedData, storeId })
-                          .then(result => {
-                              if (!result.success) {
-                                  alert('同步任务变更失败，正在从服务器恢复数据...');
-                                  fetchData(); // Revert on failure
-                              }
-                          });
-                    }
-                }
-                
-                console.log("EVENT: `change_task` fired from Gantt instance. UPDATING records state.");
-                // Update React state to reflect the UI change immediately.
+
+                // Instead of diffing and calling the API, just update the state
+                // and mark that there are unsaved changes.
+                console.log("EVENT: `change_task` (drag/resize) fired. Staging changes.");
                 setRecords(newRecords);
-                // 标记有未保存的更改
                 setHasUnsavedChanges(true);
             };
     
