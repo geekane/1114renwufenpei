@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useContext, useRef } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useParams, Navigate } from 'react-router-dom';
-import { Layout, Menu, Card, Table, Tag, Button, Space, Typography, Spin, Alert, Upload, message, Form, Input } from 'antd';
-import { MenuUnfoldOutlined, MenuFoldOutlined, UploadOutlined, PaperClipOutlined, FileTextOutlined, ShopOutlined, BarsOutlined } from '@ant-design/icons';
+import { Layout, Menu, Card, Table, Tag, Button, Space, Typography, Spin, Alert, Upload, message, Form, Input, Dropdown, Checkbox } from 'antd';
+import { MenuUnfoldOutlined, MenuFoldOutlined, UploadOutlined, PaperClipOutlined, FileTextOutlined, ShopOutlined, BarsOutlined, DownOutlined } from '@ant-design/icons';
 import { projects, locations } from './mockData';
 import GanttChart from './GanttChart';
 import D1GanttPage from './D1GanttPage'; // Import the new page
@@ -130,6 +130,8 @@ const EditableCell = ({
    const [storeDetails, setStoreDetails] = useState([]);
    const [loading, setLoading] = useState(false);
    const [error, setError] = useState(null);
+   const allColumns = useRef(generateColumns()); // Use ref to hold all possible columns
+   const [visibleColumnKeys, setVisibleColumnKeys] = useState(() => allColumns.current.map(c => c.key));
  
    const fetchData = async () => {
      console.log("Attempting to fetch store details from API...");
@@ -201,7 +203,6 @@ const EditableCell = ({
     }
    };
 
-   // 上传组件的配置 (模拟，不真实上传)
    const handleUpload = async (options, record) => {
     const { file, onSuccess, onError } = options;
     const formData = new FormData();
@@ -239,11 +240,13 @@ const EditableCell = ({
       setLoading(false);
     }
   };
- 
-   const defaultColumns = [
-    {
-        title: '序号',
-        dataIndex: 'sort_order',
+
+  // Moved column generation into a function to be able to reference it
+  function generateColumns() {
+    return [
+     {
+       title: '序号',
+       dataIndex: 'sort_order',
         key: 'sort_order',
         width: 60,
         fixed: 'left',
@@ -342,53 +345,70 @@ const EditableCell = ({
                </Space>
            )
        }
-   },
-   { title: '详细地址', dataIndex: 'detailed_address', key: 'detailed_address', width: 250, editable: true },
-    { title: '所处区域', dataIndex: 'district', key: 'district', width: 100, editable: true },
-    { title: '建筑面积', dataIndex: 'building_area', key: 'building_area', width: 100, editable: true },
-    { title: '套内面积', dataIndex: 'usable_area', key: 'usable_area', width: 100, editable: true },
-     { title: '租金', dataIndex: 'rent', key: 'rent', width: 100, editable: true },
-     { title: '免租期', dataIndex: 'rent_free_period', key: 'rent_free_period', width: 100, editable: true },
-     { title: '物业费', dataIndex: 'property_fee', key: 'property_fee', width: 80, editable: true },
-     { title: '电费', dataIndex: 'electricity_fee', key: 'electricity_fee', width: 80, editable: true },
-     { title: '水费', dataIndex: 'water_fee', key: 'water_fee', width: 80, editable: true },
-     { title: '付款方式', dataIndex: 'payment_method', key: 'payment_method', width: 100, editable: true },
-     { title: '租金递增', dataIndex: 'rent_increase', key: 'rent_increase', width: 120, editable: true },
-     { title: '合同年限', dataIndex: 'contract_years', key: 'contract_years', width: 100, editable: true },
-     { title: '门店属性', dataIndex: 'properties', key: 'properties', width: 150, editable: true },
-     { title: '开办杂费', dataIndex: 'startup_costs', key: 'startup_costs', width: 150, editable: true },
-     { title: '筹开进度', dataIndex: 'progress', key: 'progress', width: 200, editable: true },
-     { title: '回本周期', dataIndex: 'roi_period', key: 'roi_period', width: 100, editable: true },
+  },
+  { title: '详细地址', dataIndex: 'detailed_address', key: 'detailed_address', width: 250, editable: true },
+   { title: '所处区域', dataIndex: 'district', key: 'district', width: 100, editable: true },
+   { title: '建筑面积', dataIndex: 'building_area', key: 'building_area', width: 100, editable: true },
+   { title: '套内面积', dataIndex: 'usable_area', key: 'usable_area', width: 100, editable: true },
+    { title: '租金', dataIndex: 'rent', key: 'rent', width: 100, editable: true },
+    { title: '免租期', dataIndex: 'rent_free_period', key: 'rent_free_period', width: 100, editable: true },
+    { title: '物业费', dataIndex: 'property_fee', key: 'property_fee', width: 80, editable: true },
+    { title: '电费', dataIndex: 'electricity_fee', key: 'electricity_fee', width: 80, editable: true },
+    { title: '水费', dataIndex: 'water_fee', key: 'water_fee', width: 80, editable: true },
+    { title: '付款方式', dataIndex: 'payment_method', key: 'payment_method', width: 100, editable: true },
+    { title: '租金递增', dataIndex: 'rent_increase', key: 'rent_increase', width: 120, editable: true },
+    { title: '合同年限', dataIndex: 'contract_years', key: 'contract_years', width: 100, editable: true },
+    { title: '门店属性', dataIndex: 'properties', key: 'properties', width: 150, editable: true },
+    { title: '开办杂费', dataIndex: 'startup_costs', key: 'startup_costs', width: 150, editable: true },
+    { title: '筹开进度', dataIndex: 'progress', key: 'progress', width: 200, editable: true },
+    { title: '回本周期', dataIndex: 'roi_period', key: 'roi_period', width: 100, editable: true },
    ];
+  }
 
-    const components = {
-      body: {
-        row: EditableRow,
-        cell: EditableCell,
-      },
-    };
+   const components = {
+     body: {
+       row: EditableRow,
+       cell: EditableCell,
+     },
+   };
 
-    const columns = defaultColumns.map((col) => {
-      if (!col.editable) {
-        return col;
-      }
-      return {
-        ...col,
-        onCell: (record) => ({
-          record,
-          editable: col.editable,
-          dataIndex: col.dataIndex,
-          title: col.title,
-          handleSave,
-        }),
-      };
-    });
+   const columns = allColumns.current.filter(c => visibleColumnKeys.includes(c.key)).map((col) => {
+     if (!col.editable) {
+       return col;
+     }
+     return {
+       ...col,
+       onCell: (record) => ({
+         record,
+         editable: col.editable,
+         dataIndex: col.dataIndex,
+         title: col.title,
+         handleSave,
+       }),
+     };
+   });
  
+   const menu = (
+     <Menu>
+       <Checkbox.Group
+         options={allColumns.current.filter(c => c.fixed !== 'left').map(c => ({ label: c.title, value: c.key }))}
+         value={visibleColumnKeys}
+         onChange={setVisibleColumnKeys}
+         style={{ display: 'flex', flexDirection: 'column', padding: 10 }}
+       />
+     </Menu>
+   );
+
    return (
      <Card
        title="门店详情列表"
        extra={
          <Space>
+            <Dropdown overlay={menu} trigger={['click']}>
+             <Button>
+               自定义列 <DownOutlined />
+             </Button>
+           </Dropdown>
             <Button type="primary" disabled>批量导出</Button>
             <Button onClick={handleRefresh} disabled={loading} loading={loading}>
             {loading ? '刷新中' : '刷新数据'}
