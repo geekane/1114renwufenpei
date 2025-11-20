@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { Button, Space } from 'antd'; // 引入 Ant Design 的 Button 和 Space 组件
+import { Button, Space, message } from 'antd'; // 引入 Ant Design 的 Button, Space 和 message 组件
 import * as VTable from '@visactor/vtable';
 import * as VTableGantt from '@visactor/vtable-gantt';
 import { DateInputEditor, InputEditor } from '@visactor/vtable-editors';
@@ -162,6 +162,7 @@ const GanttChart = () => {
     const [markLines, setMarkLines] = useState([]);
     const [timeScale, setTimeScale] = useState('day');
     const [isLoading, setIsLoading] = useState(false);
+    const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false); // 跟踪是否有未保存的更改
 
     // 1. Fetch data for the specific store
     const fetchData = async () => {
@@ -425,6 +426,8 @@ const GanttChart = () => {
                 console.log("EVENT: `change_task` fired from Gantt instance. UPDATING records state.");
                 // Update React state to reflect the UI change immediately.
                 setRecords(newRecords);
+                // 标记有未保存的更改
+                setHasUnsavedChanges(true);
             };
     
             ganttInstance.on('click_markline_create', handleMarkLineCreate);
@@ -469,6 +472,35 @@ const GanttChart = () => {
     const handleRefresh = () => {
         console.log("User clicked refresh button. Fetching data again...");
         fetchData(); // 直接调用封装好的函数
+        // 清除未保存更改标记
+        setHasUnsavedChanges(false);
+    };
+
+    // 4. 定义保存更改的处理函数
+    const handleSaveChanges = async () => {
+        if (!hasUnsavedChanges) {
+            message.info('没有需要保存的更改');
+            return;
+        }
+
+        setIsLoading(true);
+        try {
+            console.log("User clicked save changes button. Sending data to API...", records);
+            const result = await apiCall('tasks', 'POST', { records });
+            
+            if (result.success) {
+                message.success('更改已成功保存');
+                // 清除未保存更改标记
+                setHasUnsavedChanges(false);
+            } else {
+                message.error('保存失败: ' + (result.error?.message || '未知错误'));
+            }
+        } catch (error) {
+            console.error('保存更改时发生错误:', error);
+            message.error('保存失败: ' + error.message);
+        } finally {
+            setIsLoading(false);
+        }
     };
 
     return (
@@ -481,13 +513,22 @@ const GanttChart = () => {
                     <Button type={timeScale === 'month' ? 'primary' : 'default'} onClick={() => setTimeScale('month')}>月</Button>
                 </Space>
                 
-                <Button
-                    onClick={handleRefresh}
-                    disabled={isLoading}
-                    loading={isLoading}
-                >
-                    {isLoading ? '正在刷新...' : '刷新同步数据'}
-                </Button>
+                <Space>
+                    <Button
+                        onClick={handleRefresh}
+                        disabled={isLoading}
+                    >
+                        {isLoading ? '正在刷新...' : '刷新同步数据'}
+                    </Button>
+                    <Button
+                        type="primary"
+                        onClick={handleSaveChanges}
+                        disabled={isLoading || !hasUnsavedChanges}
+                        loading={isLoading}
+                    >
+                        {isLoading ? '正在保存...' : '保存更改'}
+                    </Button>
+                </Space>
             </div>
             <div ref={containerRef} style={{ flex: 1, width: '100%' }} />
         </div>
