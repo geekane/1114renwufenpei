@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>门店投资回报计算器 (智能版)</title>
+    <style>
+        :root {
+            --bg-color: #f8f9fa;
+            --card-bg-color: #ffffff;
+            --text-color: #212529;
+            --primary-color: #0d6efd;
+            --secondary-color: #6c757d;
+            --border-color: #dee2e6;
+            --shadow: 0 4px 15px rgba(0, 0, 0, 0.07);
+            --border-radius: 12px;
+            --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+            --highlight-color: #fff3cd; /* 定义一个高亮颜色 */
+        }
+
+        body {
+            font-family: var(--font-family);
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 2rem;
+            font-size: 16px;
+            line-height: 1.6;
+        }
+
+        .container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2rem;
+            max-width: 1280px;
+            margin: 0 auto;
+        }
+
+        .card {
+            background-color: var(--card-bg-color);
+            border-radius: var(--border-radius);
+            box-shadow: var(--shadow);
+            padding: 2rem;
+        }
+
+        h1, h2 {
+            margin-top: 0;
+            color: var(--primary-color);
+            font-weight: 600;
+        }
+        
+        h1 {
+            grid-column: 1 / -1;
+            text-align: center;
+            margin-bottom: 1rem;
+            font-size: 2.5rem;
+        }
+
+        h3 {
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 0.5rem;
+            margin-bottom: 1.5rem;
+            color: var(--secondary-color);
+            font-weight: 500;
+        }
+
+        .input-group {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.25rem;
+        }
+
+        .input-group label {
+            font-weight: 500;
+            color: #495057;
+            flex-basis: 60%;
+        }
+
+        .input-group input {
+            flex-basis: 40%;
+            padding: 0.75rem;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            font-size: 1.1rem;
+            text-align: right;
+            /* 
+             * 【改动 1】: 在 transition 中加入了 background-color
+             * 这能让背景色的变化（无论是高亮还是恢复）都变得平滑。
+             */
+            transition: border-color 0.3s, box-shadow 0.3s, background-color 0.5s ease;
+        }
+        
+        /* 
+         * 【改动 2】: 新增一个 CSS 类用于高亮显示 
+         * 当这个类被添加到 input 元素上时，背景会变成我们预设的高亮色。
+         */
+        .field-updated {
+            background-color: var(--highlight-color) !important;
+        }
+
+        .input-group input:focus {
+            outline: none;
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 3px rgba(13, 110, 253, 0.25);
+        }
+
+        .btn {
+            width: 100%;
+            padding: 0.8rem 1rem;
+            font-size: 1.1rem;
+            font-weight: 500;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            color: white;
+            transition: background-color 0.2s, opacity 0.2s;
+            margin-top: 1rem;
+        }
+        .btn-primary { background-color: var(--primary-color); }
+        .btn-primary:hover { background-color: #0b5ed7; }
+        .btn-secondary { background-color: var(--secondary-color); }
+        .btn-secondary:hover { background-color: #5a6268; }
+        .btn:disabled { opacity: 0.65; cursor: not-allowed; }
+
+        .parser-section textarea {
+            width: 100%;
+            height: 150px;
+            padding: 0.75rem;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            font-size: 1rem;
+            line-height: 1.5;
+            resize: vertical;
+            margin-bottom: 1rem;
+            box-sizing: border-box;
+        }
+
+        #status-message {
+            margin-top: 1rem;
+            text-align: center;
+            color: var(--secondary-color);
+            min-height: 1.5em;
+            font-weight: 500;
+        }
+
+        .results-list { list-style: none; padding: 0; margin: 0; }
+        .results-list li {
+            display: flex;
+            justify-content: space-between;
+            padding: 1rem 0;
+            border-bottom: 1px solid #f1f3f5;
+            font-size: 1.1rem;
+        }
+        .results-list li:last-child { border-bottom: none; }
+        .result-label { color: #6c757d; }
+        .result-value { font-weight: 600; font-size: 1.2rem; }
+        
+        .results-list .main-result .result-label { font-size: 1.2rem; color: var(--text-color); }
+        .results-list .main-result .result-value { font-size: 1.5rem; color: var(--primary-color); }
+        
+        .results-list hr { border: 0; border-top: 1px solid var(--border-color); margin: 1rem 0; }
+
+        @media (max-width: 992px) {
+            .container { grid-template-columns: 1fr; }
+            body { padding: 1rem; }
+            h1 { font-size: 2rem; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>门店投资回报计算器 (智能版)</h1>
+
+        <div class="card" id="input-card">
+            <h2>输入项</h2>
+
+            <div class="parser-section">
+                <h3>智能解析</h3>
+                <textarea id="text-input" placeholder="请在此处粘贴门店资料文本..."></textarea>
+                <button id="parse-btn" class="btn btn-primary">智能解析填充</button>
+                <p id="status-message"></p>
+            </div>
+
+            <h3>手动输入</h3>
+            <div class="input-group"><label for="gross_area">门店面积 (含公摊 m²)</label><input type="number" id="gross_area" value="205"></div>
+            <div class="input-group"><label for="net_area">门店实用面积 (m²)</label><input type="number" id="net_area" value="195"></div>
+            <div class="input-group"><label for="rent_per_sqm">门店房租 (元/每平)</label><input type="number" id="rent_per_sqm" value="43.9"></div>
+            <div class="input-group"><label for="prop_fee_per_sqm">物业费 (元/每平)</label><input type="number" id="prop_fee_per_sqm" value="5.5"></div>
+            <div class="input-group"><label for="staff_count">工作人员数量</label><input type="number" id="staff_count" value="4"></div>
+            <div class="input-group"><label for="misc_startup_fee">其他杂项开办费</label><input type="number"id="misc_startup_fee" value="20000"></div>
+            <button id="fill-example-btn" class="btn btn-secondary">一键填入示例数据</button>
+        </div>
+
+        <div class="card">
+            <h2>计算结果</h2>
+            <ul class="results-list">
+                <li class="main-result"><span class="result-label">月度营收总额</span><span id="monthly_total_revenue" class="result-value">0.00</span></li>
+                <li class="main-result"><span class="result-label">月支出合计</span><span id="total_monthly_expenses" class="result-value">0.00</span></li>
+                <li class="main-result"><span class="result-label">月度净利润</span><span id="monthly_net_profit" class="result-value">0.00</span></li>
+                <hr>
+                <li class="main-result"><span class="result-label">投资总额</span><span id="total_investment" class="result-value">0.00</span></li>
+                <li class="main-result"><span class="result-label">投资回报周期 (月)</span><span id="payback_period" class="result-value">N/A</span></li>
+                <hr>
+                <li><span class="result-label">预计机器总数</span><span id="total_machines" class="result-value">0.00</span></li>
+                <li><span class="result-label">管理费 (营收5%)</span><span id="management_fee" class="result-value">0.00</span></li>
+                <li><span class="result-label">云电脑月费</span><span id="cloud_pc_fee" class="result-value">0.00</span></li>
+                <li><span class="result-label">装修费用</span><span id="decoration_cost" class="result-value">0.00</span></li>
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const inputIds = [
+                'gross_area', 'net_area', 'rent_per_sqm', 'prop_fee_per_sqm', 
+                'staff_count', 'misc_startup_fee'
+            ];
+
+            const parseBtn = document.getElementById('parse-btn');
+            const textInput = document.getElementById('text-input');
+            const statusMessage = document.getElementById('status-message');
+            
+            // --- LLM Parsing Logic ---
+            parseBtn.addEventListener('click', async () => {
+                const text = textInput.value.trim();
+                if (!text) {
+                    statusMessage.textContent = '请输入文本内容。';
+                    statusMessage.style.color = 'red';
+                    return;
+                }
+
+                statusMessage.textContent = '正在智能解析中，请稍候...';
+                statusMessage.style.color = 'var(--secondary-color)';
+                parseBtn.disabled = true;
+
+                try {
+                    const response = await fetch('http://127.0.0.1:5000/parse-text', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ text: text })
+                    });
+
+                    if (!response.ok) {
+                        const errorData = await response.json();
+                        throw new Error(errorData.error || `服务器错误: ${response.status}`);
+                    }
+
+                    const data = await response.json();
+                    
+                    /* 
+                     * 【改动 3】: 核心逻辑更新，实现高亮效果
+                     */
+                    let updatedFieldsCount = 0;
+                    
+                    for (const key in data) {
+                        const inputElement = document.getElementById(key);
+                        if (inputElement && data[key] !== null) {
+                            const oldValue = inputElement.value;
+                            const newValue = String(data[key]);
+
+                            // 只有当新旧值不同时，才执行高亮并计数
+                            if (oldValue !== newValue) {
+                                inputElement.value = newValue;
+                                updatedFieldsCount++;
+                                
+                                // 添加高亮类
+                                inputElement.classList.add('field-updated');
+                                
+                                // 设置一个定时器，在 2.5 秒后移除高亮类，形成闪烁效果
+                                setTimeout(() => {
+                                    inputElement.classList.remove('field-updated');
+                                }, 2500);
+                            }
+                        }
+                    }
+
+                    // 根据是否有字段更新，显示不同的提示信息
+                    if (updatedFieldsCount > 0) {
+                        statusMessage.textContent = `解析成功！已更新 ${updatedFieldsCount} 个字段。`;
+                        statusMessage.style.color = 'green';
+                    } else {
+                        statusMessage.textContent = `解析完成，所有字段数值均未变动。`;
+                        statusMessage.style.color = 'var(--secondary-color)';
+                    }
+                    
+                    // 无论是否高亮，都在填充后重新计算
+                    performCalculations();
+
+                } catch (error) {
+                    console.error('Parsing Error:', error);
+                    statusMessage.textContent = `解析失败: ${error.message}`;
+                    statusMessage.style.color = 'red';
+                } finally {
+                    parseBtn.disabled = false;
+                }
+            });
+
+
+            // --- Calculation Logic (unchanged) ---
+            function performCalculations() {
+                const inputs = {};
+                inputIds.forEach(id => {
+                    inputs[id] = parseFloat(document.getElementById(id).value) || 0;
+                });
+
+                const results = {};
+                try {
+                    const { gross_area, net_area, rent_per_sqm, prop_fee_per_sqm, staff_count, misc_startup_fee } = inputs;
+                    
+                    const floor_area_ratio = 3.5;
+                    const estimated_machines = net_area / floor_area_ratio;
+                    results.total_machines = estimated_machines;
+                    const booth_machines = estimated_machines / 10 * 4;
+                    const hall_machines = estimated_machines / 10 * 4;
+                    const private_room_machines = estimated_machines - booth_machines - hall_machines;
+
+                    const daily_retail_sales = results.total_machines * 5;
+                    const monthly_retail_sales = daily_retail_sales * 30;
+
+                    const avg_pc_hours = 14;
+                    const daily_revenue_private = avg_pc_hours * private_room_machines * 6;
+                    const daily_revenue_booth = avg_pc_hours * booth_machines * 4.5;
+                    const daily_revenue_hall = avg_pc_hours * hall_machines * 3.5;
+                    
+                    const daily_total_revenue = daily_revenue_private + daily_revenue_booth + daily_revenue_hall + daily_retail_sales;
+                    results.monthly_total_revenue = daily_total_revenue * 30;
+
+                    const rent_property_fee = (rent_per_sqm + prop_fee_per_sqm) * gross_area;
+                    const salaries = (25000 / 4) * staff_count;
+                    const retail_cost = monthly_retail_sales * 0.60;
+                    const water_electricity_fee = (results.total_machines * 0.4 * 0.9 * avg_pc_hours * 30) + (gross_area * 20);
+                    results.cloud_pc_fee = (private_room_machines * 320) + ((hall_machines + booth_machines) * 250);
+                    results.management_fee = results.monthly_total_revenue * 0.05;
+
+                    results.total_monthly_expenses = rent_property_fee + salaries + retail_cost + 4000 + 2500 + water_electricity_fee + 2000 + 3000 + results.cloud_pc_fee + results.management_fee;
+                    
+                    results.monthly_net_profit = results.monthly_total_revenue - results.total_monthly_expenses;
+
+                    results.decoration_cost = net_area * 1100;
+                    const ac_cost = net_area * 350;
+                    const furniture_cost = (850 + 500) * results.total_machines;
+                    const monitor_cost = (hall_machines + booth_machines) * 900 + private_room_machines * 1800;
+                    
+                    results.total_investment = results.decoration_cost + ac_cost + furniture_cost + monitor_cost + 30000 + 10000 + 5000 + 10000 + misc_startup_fee;
+
+                    results.payback_period = results.monthly_net_profit > 0 ? (results.total_investment / results.monthly_net_profit).toFixed(2) : '亏损或无利润';
+
+                    updateDisplay(results);
+
+                } catch (e) {
+                    console.error("Calculation Error:", e);
+                }
+            }
+
+            function updateDisplay(results) {
+                const formatter = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                for (const key in results) {
+                    const element = document.getElementById(key);
+                    if (element) {
+                        element.textContent = (typeof results[key] === 'number') ? formatter.format(results[key]) : results[key];
+                    }
+                }
+            }
+
+            document.getElementById('input-card').addEventListener('input', performCalculations);
+
+            document.getElementById('fill-example-btn').addEventListener('click', () => {
+                const exampleData = {
+                    gross_area: 205, net_area: 195, rent_per_sqm: 43.9, 
+                    prop_fee_per_sqm: 5.5, staff_count: 4, misc_startup_fee: 20000
+                };
+                for (const id in exampleData) {
+                    document.getElementById(id).value = exampleData[id];
+                }
+                performCalculations();
+            });
+
+            // Initial calculation on page load
+            performCalculations();
+        });
+    </script>
+</body>
+</html>

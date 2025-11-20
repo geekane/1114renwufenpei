@@ -4,6 +4,7 @@ import { Layout, Menu, Card, Table, Tag, Button, Space, Typography, Spin, Alert,
 import { MenuUnfoldOutlined, MenuFoldOutlined, UploadOutlined, PaperClipOutlined, FileTextOutlined, ShopOutlined, BarsOutlined, DownOutlined } from '@ant-design/icons';
 import { projects, locations } from './mockData';
 import GanttChart from './GanttChart';
+import { calculateROI } from './roiCalculator';
 import D1GanttPage from './D1GanttPage'; // Import the new page
 import './Responsive.css';
 
@@ -252,6 +253,51 @@ const StoreDetailsPage = () => {
       { title: '开办杂费', dataIndex: 'startup_costs', key: 'startup_costs', width: 150, editable: true, sorter: (a, b) => (a.startup_costs || 0) - (b.startup_costs || 0) },
       { title: '筹开进度', dataIndex: 'progress', key: 'progress', width: 200, editable: true, sorter: (a, b) => (a.progress || '').length - (b.progress || '').length },
       { title: '回本周期', dataIndex: 'roi_period', key: 'roi_period', width: 100, editable: true, sorter: (a, b) => (a.roi_period || 0) - (b.roi_period || 0) },
+      {
+        title: '回报率测算(月)',
+        key: 'roi_calculation',
+        width: 140,
+        align: 'center',
+        render: (text, record) => {
+          // 确保除数不为0
+          const grossArea = parseFloat(record.building_area) || 1;
+          // 租金/平米 = 月租 / 建筑面积
+          const rentPerSqm = (parseFloat(record.rent) || 0) / grossArea;
+          // 物业费/平米 = 月物业费 / 建筑面积
+          const propFeePerSqm = (parseFloat(record.property_fee) || 0) / grossArea;
+
+          const inputs = {
+            gross_area: parseFloat(record.building_area) || 0,
+            net_area: parseFloat(record.usable_area) || 0,
+            rent_per_sqm: rentPerSqm,
+            prop_fee_per_sqm: propFeePerSqm,
+            staff_count: 4, // 默认值为4，因为表格中没有此列
+            misc_startup_fee: parseFloat(record.startup_costs) || 0,
+          };
+
+          const results = calculateROI(inputs);
+
+          if (results.error) {
+            return <Tag color="error">计算错误</Tag>;
+          }
+
+          if (results.payback_period === '亏损或无利润') {
+            return <Tag color="red">{results.payback_period}</Tag>;
+          }
+          
+          const period = parseFloat(results.payback_period);
+          let color = 'default';
+          if (period <= 12) {
+            color = 'success';
+          } else if (period <= 24) {
+            color = 'blue';
+          } else {
+            color = 'warning';
+          }
+
+          return <Tag color={color}>{`${results.payback_period} 月`}</Tag>;
+        }
+      },
     ];
   }
 
@@ -432,7 +478,7 @@ const StoreDetailsPage = () => {
           dataSource={storeDetails}
           columns={columns}
           rowKey="key" // 确保每行有唯一 Key，通常是 store_id
-          scroll={{ x: 2000 }}
+          scroll={{ x: 2140 }}
           pagination={{ defaultPageSize: 10 }}
           size="middle"
         />
