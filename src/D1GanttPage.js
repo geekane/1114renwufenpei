@@ -162,7 +162,6 @@ const GanttChart = () => {
     const [markLines, setMarkLines] = useState([]);
     const [timeScale, setTimeScale] = useState('day');
     const [isLoading, setIsLoading] = useState(false);
-    const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false); // 跟踪是否有未保存的更改
 
     // 1. Fetch data for the specific store
     const fetchData = async () => {
@@ -306,8 +305,6 @@ const GanttChart = () => {
                     };
                     return updateNode(currentRecords);
                 });
-
-                setHasUnsavedChanges(true); // Mark that there are unsaved changes
             };
             
             const handleMarkLineCreate = ({ data, position }) => {
@@ -364,7 +361,6 @@ const GanttChart = () => {
                 // and mark that there are unsaved changes.
                 console.log("EVENT: `change_task` (drag/resize) fired. Staging changes.");
                 setRecords(newRecords);
-                setHasUnsavedChanges(true);
             };
     
             ganttInstance.on('click_markline_create', handleMarkLineCreate);
@@ -409,17 +405,10 @@ const GanttChart = () => {
     const handleRefresh = () => {
         console.log("User clicked refresh button. Fetching data again...");
         fetchData(); // 直接调用封装好的函数
-        // 清除未保存更改标记
-        setHasUnsavedChanges(false);
     };
 
     // 4. 定义保存更改的处理函数
     const handleSaveChanges = async () => {
-        if (!hasUnsavedChanges) {
-            message.info('没有需要保存的更改');
-            return;
-        }
-
         setIsLoading(true);
         try {
             console.log("User clicked save changes button. Sending data to API...", records);
@@ -427,8 +416,6 @@ const GanttChart = () => {
             
             if (result.success) {
                 message.success('更改已成功保存');
-                // 清除未保存更改标记
-                setHasUnsavedChanges(false);
             } else {
                 message.error('保存失败: ' + (result.error?.message || '未知错误'));
             }
@@ -460,10 +447,10 @@ const GanttChart = () => {
                     <Button
                         type="primary"
                         onClick={handleSaveChanges}
-                        disabled={isLoading || !hasUnsavedChanges}
+                        disabled={isLoading}
                         loading={isLoading}
                     >
-                        {isLoading ? '正在保存...' : '保存更改'}
+                        {isLoading ? '正在保存...' : '保存更改到D1'}
                     </Button>
                 </Space>
             </div>
