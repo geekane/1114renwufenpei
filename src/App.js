@@ -172,7 +172,13 @@ const EditableCell = ({
     if (index > -1) {
       const item = newData[index];
       newData.splice(index, 1, { ...item, ...row });
-      setStoreDetails(newData);
+      setStoreDetails(newData); // Optimistic UI update
+
+      const dataToSave = { ...row };
+      // CRITICAL: Ensure related_documents is a string for the backend.
+      if (Array.isArray(dataToSave.related_documents)) {
+        dataToSave.related_documents = JSON.stringify(dataToSave.related_documents);
+      }
 
       try {
         const response = await fetch(`/api/store-detail/${row.store_id}`, {
@@ -180,15 +186,15 @@ const EditableCell = ({
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify(row),
+          body: JSON.stringify(dataToSave), // Send the processed data
         });
         if (!response.ok) {
-          throw new Error('Failed to save data');
+          throw new Error('Failed to save data to D1');
         }
         message.success('保存成功');
       } catch (err) {
-        message.error('保存失败');
-        // rollback
+        message.error('保存失败，正在回滚...');
+        // Rollback UI on failure
         newData.splice(index, 1, item);
         setStoreDetails(newData);
       }
@@ -321,7 +327,7 @@ const EditableCell = ({
                        icon={<PaperClipOutlined />}
                        color="blue"
                      >
-                       <a href={`/api/file/${doc.key}`} target="_blank" rel="noopener noreferrer">
+                       <a href={`https://pub-47540e3d1c0c47f6b9505e84e0f27df6.r2.dev/${doc.key}`} target="_blank" rel="noopener noreferrer">
                          <Typography.Text
                            editable={{
                              onChange: (newName) => handleDocRename(doc, newName),
