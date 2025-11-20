@@ -127,27 +127,16 @@ const getScalesConfig = (scaleType) => {
         default:
             return [
                 {
+                    unit: 'month',
+                    step: 1,
+                    format: (context) => `${context.startDate.getFullYear()}年 ${context.startDate.getMonth() + 1}月`,
+                    style: { textStick: true, fontSize: 14, fontWeight: 'bold', color: '#333', textAlign: 'center' }
+                },
+                {
                     unit: 'day',
                     step: 1,
-                    format(date) { return date.dateIndex.toString(); },
-                    customLayout: args => {
-                        const { width, height, dateIndex, startDate } = args;
-                        const container = new VTableGantt.VRender.Group({ width, height, fill: '#f0f0fb', display: 'flex', flexDirection: 'row', flexWrap: 'nowrap' });
-                        const containerLeft = new VTableGantt.VRender.Group({ height, width: 30, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'space-around' });
-                        container.add(containerLeft);
-
-                        const simpleCalendarIcon = '<svg viewBox="0 0 24 24" fill="#389BFF" xmlns="http://www.w3.org/2000/svg"><path d="M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z M7 7v2h2V7H7z"/></svg>';
-                        const avatar = new VTableGantt.VRender.Image({ width: 20, height: 30, image: simpleCalendarIcon });
-                        
-                        containerLeft.add(avatar);
-                        const containerCenter = new VTableGantt.VRender.Group({ height, width: width - 30, display: 'flex', flexDirection: 'column' });
-                        container.add(containerCenter);
-                        const dayNumber = new VTableGantt.VRender.Text({ text: String(dateIndex).padStart(2, '0'), fontSize: 20, fontWeight: 'bold', fontFamily: 'sans-serif', fill: 'black', textAlign: 'right', maxLineWidth: width - 30, boundsPadding: [15, 0, 0, 0] });
-                        containerCenter.add(dayNumber);
-                        const weekDay = new VTableGantt.VRender.Text({ text: getChineseWeekday(startDate), fontSize: 12, fontFamily: 'sans-serif', fill: 'black', boundsPadding: [0, 0, 0, 0] });
-                        containerCenter.add(weekDay);
-                        return { rootContainer: container };
-                    }
+                    format: (date) => `${date.dateIndex}\n${getChineseWeekday(date.startDate)}`,
+                    style: { textAlign: 'center', lineHeight: 20, fontSize: 12 }
                 }
             ];
     }
@@ -239,7 +228,7 @@ const GanttChart = () => {
                   }
                 },
                 grid: { backgroundColor: '#f0f0fb', horizontalLine: { lineWidth: 2, lineColor: '#d5d9ee' } },
-                headerRowHeight: 60,
+                headerRowHeight: 80,
                 rowHeight: 80,
                 taskBar: {
                   startDateField: 'start', endDateField: 'end', progressField: 'progress', barStyle: { width: 60 },
