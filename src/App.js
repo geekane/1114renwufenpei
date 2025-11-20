@@ -4,7 +4,7 @@ import { Layout, Menu, Card, Table, Tag, Button, Space, Typography, Spin, Alert,
 import { MenuUnfoldOutlined, MenuFoldOutlined, UploadOutlined, PaperClipOutlined, FileTextOutlined, ShopOutlined, BarsOutlined, DownOutlined } from '@ant-design/icons';
 import { projects, locations } from './mockData';
 import GanttChart from './GanttChart';
-import { calculateROI } from './roiCalculator';
+import { calculateROI, parseNumericValue } from './roiCalculator';
 import D1GanttPage from './D1GanttPage'; // Import the new page
 import './Responsive.css';
 
@@ -259,20 +259,25 @@ const StoreDetailsPage = () => {
         width: 140,
         align: 'center',
         render: (text, record) => {
-          // 确保除数不为0
-          const grossArea = parseFloat(record.building_area) || 1;
-          // 租金/平米 = 月租 / 建筑面积
-          const rentPerSqm = (parseFloat(record.rent) || 0) / grossArea;
-          // 物业费/平米 = 月物业费 / 建筑面积
-          const propFeePerSqm = (parseFloat(record.property_fee) || 0) / grossArea;
+          // 使用新的解析函数来处理可能包含单位的文本
+          const grossArea = parseNumericValue(record.building_area) || 1; // 确保除数不为0
+          const totalRent = parseNumericValue(record.rent);
+          const startupCosts = parseNumericValue(record.startup_costs);
+          const usableArea = parseNumericValue(record.usable_area);
+          
+          // 根据反馈，物业费字段现在是单价 (元/每平)
+          const propFeePerSqm = parseNumericValue(record.property_fee);
+          
+          // 租金/平米 = 月租总价 / 建筑面积
+          const rentPerSqm = totalRent / grossArea;
 
           const inputs = {
-            gross_area: parseFloat(record.building_area) || 0,
-            net_area: parseFloat(record.usable_area) || 0,
+            gross_area: grossArea,
+            net_area: usableArea,
             rent_per_sqm: rentPerSqm,
             prop_fee_per_sqm: propFeePerSqm,
             staff_count: 4, // 默认值为4，因为表格中没有此列
-            misc_startup_fee: parseFloat(record.startup_costs) || 0,
+            misc_startup_fee: startupCosts,
           };
 
           const results = calculateROI(inputs);

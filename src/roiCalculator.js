@@ -1,4 +1,31 @@
 /**
+ * 从字符串中解析数值，支持“万”单位
+ * @param {string|number} value - 输入值，例如 "71.5万" 或 15000
+ * @returns {number} - 解析出的数值
+ */
+export function parseNumericValue(value) {
+  if (typeof value === 'number') {
+    return value;
+  }
+  if (typeof value !== 'string') {
+    return 0;
+  }
+
+  // 使用 parseFloat 提取数字部分
+  const num = parseFloat(value);
+  if (isNaN(num)) {
+    return 0;
+  }
+
+  // 如果字符串包含“万”，则乘以 10000
+  if (value.includes('万')) {
+    return num * 10000;
+  }
+
+  return num;
+}
+
+/**
  * 根据门店输入数据计算投资回报
  * @param {object} inputs - 包含计算所需输入值的对象
  * @param {number} [inputs.gross_area=0] - 门店面积 (含公摊 m²)
