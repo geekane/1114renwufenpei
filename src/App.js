@@ -357,7 +357,7 @@ const EditableCell = ({
      { title: '合同年限', dataIndex: 'contract_years', key: 'contract_years', width: 100, editable: true },
      { title: '门店属性', dataIndex: 'properties', key: 'properties', width: 150, editable: true },
      { title: '开办杂费', dataIndex: 'startup_costs', key: 'startup_costs', width: 150, editable: true },
-     { title: '筹开进度', dataIndex: 'progress', key: 'progress', width: 200, ellipsis: true, editable: true },
+     { title: '筹开进度', dataIndex: 'progress', key: 'progress', width: 200, editable: true },
      { title: '回本周期', dataIndex: 'roi_period', key: 'roi_period', width: 100, editable: true },
    ];
 
