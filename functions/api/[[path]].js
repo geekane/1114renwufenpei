@@ -185,6 +185,30 @@ export async function onRequest(context) {
     }
   }
 
+  // Route: GET /api/file/:key
+  // Serves a file from R2
+  if (request.method === 'GET' && pathSegments[0] === 'file' && pathSegments[1]) {
+    try {
+      const fileKey = pathSegments.slice(1).join('/');
+      const object = await env.R2.get(fileKey);
+
+      if (object === null) {
+        return new Response('Object Not Found', { status: 404 });
+      }
+
+      const headers = new Headers();
+      object.writeHttpMetadata(headers);
+      headers.set('etag', object.httpEtag);
+
+      return new Response(object.body, {
+        headers,
+      });
+    } catch (e) {
+      console.error('Error serving file from R2:', e);
+      return jsonResponse({ error: 'Failed to serve file.', details: e.message }, 500);
+    }
+  }
+
   // Route: DELETE /api/file/:key
   // Deletes a file from R2
   if (request.method === 'DELETE' && pathSegments[0] === 'file' && pathSegments[1]) {

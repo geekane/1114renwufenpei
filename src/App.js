@@ -321,14 +321,16 @@ const EditableCell = ({
                        icon={<PaperClipOutlined />}
                        color="blue"
                      >
-                       <Typography.Text
-                         editable={{
-                           onChange: (newName) => handleDocRename(doc, newName),
-                           tooltip: `原始文件名: ${doc.originalName || doc.name}`
-                         }}
-                       >
-                         {doc.name}
-                       </Typography.Text>
+                       <a href={`/api/file/${doc.key}`} target="_blank" rel="noopener noreferrer">
+                         <Typography.Text
+                           editable={{
+                             onChange: (newName) => handleDocRename(doc, newName),
+                             tooltip: `原始文件名: ${doc.originalName || doc.name}`
+                           }}
+                         >
+                           {doc.name}
+                         </Typography.Text>
+                       </a>
                      </Tag>
                    ))}
                </Space>
