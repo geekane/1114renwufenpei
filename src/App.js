@@ -196,16 +196,43 @@ const EditableCell = ({
    };
 
    // 上传组件的配置 (模拟，不真实上传)
-   const uploadProps = {
-    name: 'file',
-    multiple: true, // 允许上传多个文件
-    showUploadList: false, // 表格里不显示默认的上传列表，以免撑大表格
-    beforeUpload: (file) => {
-        // 拦截上传，返回 false 阻止自动 POST 请求
-        message.success(`${file.name} 已添加到上传队列 (模拟)`);
-        return false; 
-    },
-   };
+   const handleUpload = async (options, record) => {
+    const { file, onSuccess, onError } = options;
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      setLoading(true);
+      const res = await fetch('/api/upload', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!res.ok) {
+        throw new Error('Upload failed');
+      }
+
+      const newFileData = await res.json();
+      onSuccess(newFileData);
+      message.success(`${file.name} 上传成功`);
+
+      // Update the record in the database
+      const currentDocs = record.related_documents ? JSON.parse(record.related_documents) : [];
+      const updatedDocs = [...currentDocs, {
+        name: newFileData.name.substring(0, 5), // Truncate name
+        key: newFileData.key,
+        originalName: newFileData.name
+      }];
+
+      handleSave({ ...record, related_documents: updatedDocs });
+
+    } catch (err) {
+      onError(err);
+      message.error(`${file.name} 上传失败.`);
+    } finally {
+      setLoading(false);
+    }
+  };
  
    const defaultColumns = [
     {
@@ -230,34 +257,84 @@ const EditableCell = ({
         ),
         editable: true,
     },
-    {
-      title: '资料操作',
-      key: 'upload_action',
-      width: 100,
-      fixed: 'left',
-      render: (_, record) => (
-        <Upload {...uploadProps}>
-          <Button icon={<UploadOutlined />} size="small" type="dashed">上传</Button>
-        </Upload>
-      ),
-    },
-    {
-        title: '已存文档',
-        dataIndex: 'related_documents',
-        key: 'related_documents',
-        width: 200,
-        render: (_, record, index) => {
-            if (index % 2 === 0) {
-                return (
-                    <Space direction="vertical" size={0}>
-                        <Tag icon={<FileTextOutlined />} color="blue">租赁合同.pdf</Tag>
-                        <Tag icon={<PaperClipOutlined />} color="geekblue">现场照片.jpg</Tag>
-                    </Space>
-                )
-            }
-            return <span style={{color: '#ccc'}}>暂无</span>
-        }
-    },
+   {
+     title: '资料操作',
+     key: 'upload_action',
+     width: 100,
+     fixed: 'left',
+     render: (_, record) => (
+       <Upload
+         customRequest={(options) => handleUpload(options, record)}
+         showUploadList={false}
+         multiple
+       >
+         <Button icon={<UploadOutlined />} size="small" type="dashed">上传</Button>
+       </Upload>
+     ),
+   },
+   {
+       title: '已存文档',
+       dataIndex: 'related_documents',
+       key: 'related_documents',
+       width: 250,
+       render: (docs, record) => {
+           let documents = [];
+           try {
+               if(typeof docs === 'string') documents = JSON.parse(docs);
+               else if (Array.isArray(docs)) documents = docs;
+           } catch(e) { documents = []; }
+           
+           if (!Array.isArray(documents) || documents.length === 0) {
+               return <span style={{color: '#ccc'}}>暂无</span>;
+           }
+
+           const handleDocDelete = async (docToDelete) => {
+             try {
+               setLoading(true);
+               const res = await fetch(`/api/file/${docToDelete.key}`, { method: 'DELETE' });
+               if (!res.ok) throw new Error('Delete failed');
+               
+               const updatedDocs = documents.filter(doc => doc.key !== docToDelete.key);
+               handleSave({ ...record, related_documents: updatedDocs });
+               message.success('删除成功');
+             } catch (err) {
+               message.error('删除失败');
+             } finally {
+               setLoading(false);
+             }
+           };
+           
+           const handleDocRename = (docToRename, newName) => {
+               const updatedDocs = documents.map(doc =>
+                   doc.key === docToRename.key ? { ...doc, name: newName } : doc
+               );
+               handleSave({ ...record, related_documents: updatedDocs });
+           };
+
+           return (
+               <Space direction="vertical" size={2}>
+                   {documents.map(doc => (
+                     <Tag
+                       key={doc.key}
+                       closable
+                       onClose={(e) => { e.preventDefault(); handleDocDelete(doc); }}
+                       icon={<PaperClipOutlined />}
+                       color="blue"
+                     >
+                       <Typography.Text
+                         editable={{
+                           onChange: (newName) => handleDocRename(doc, newName),
+                           tooltip: `原始文件名: ${doc.originalName || doc.name}`
+                         }}
+                       >
+                         {doc.name}
+                       </Typography.Text>
+                     </Tag>
+                   ))}
+               </Space>
+           )
+       }
+   },
      { title: '所处区域', dataIndex: 'district', key: 'district', width: 100, editable: true },
      { title: '建筑面积', dataIndex: 'building_area', key: 'building_area', width: 100, editable: true },
      { title: '套内面积', dataIndex: 'usable_area', key: 'usable_area', width: 100, editable: true },

@@ -158,6 +158,74 @@ export async function onRequest(context) {
   }
 
 
+
+  // Route: POST /api/upload
+  // Handles file uploads to R2
+  if (request.method === 'POST' && pathSegments[0] === 'upload') {
+    try {
+      const formData = await request.formData();
+      const file = formData.get('file');
+
+      if (!file) {
+        return jsonResponse({ error: 'No file uploaded.' }, 400);
+      }
+      
+      // Generate a unique key for the file in R2
+      const fileKey = `${Date.now()}-${file.name}`;
+      
+      await env.R2.put(fileKey, file.stream(), {
+        httpMetadata: { contentType: file.type },
+      });
+
+      return jsonResponse({ success: true, key: fileKey, name: file.name, type: file.type });
+
+    } catch (e) {
+      console.error('Error uploading to R2:', e);
+      return jsonResponse({ error: 'Failed to upload file.', details: e.message }, 500);
+    }
+  }
+
+  // Route: DELETE /api/file/:key
+  // Deletes a file from R2
+  if (request.method === 'DELETE' && pathSegments[0] === 'file' && pathSegments[1]) {
+    try {
+      const fileKey = pathSegments.slice(1).join('/'); // Handle keys with slashes
+      await env.R2.delete(fileKey);
+      return jsonResponse({ success: true, message: `File ${fileKey} deleted.` });
+    } catch (e) {
+      console.error('Error deleting file from R2:', e);
+      return jsonResponse({ error: 'Failed to delete file.', details: e.message }, 500);
+    }
+  }
+
+  // Route: POST /api/rename-file
+  // Renames a file in R2 (copy then delete)
+  if (request.method === 'POST' && pathSegments[0] === 'rename-file') {
+    try {
+      const { oldKey, newKey } = await request.json();
+      if (!oldKey || !newKey) {
+        return jsonResponse({ error: 'oldKey and newKey are required.' }, 400);
+      }
+
+      // Copy the object to the new key
+      const object = await env.R2.get(oldKey);
+      if (object === null) {
+         return jsonResponse({ error: 'Old key does not exist.' }, 404);
+      }
+      await env.R2.put(newKey, object.body, {
+          httpMetadata: object.httpMetadata,
+      });
+
+      // Delete the old object
+      await env.R2.delete(oldKey);
+
+      return jsonResponse({ success: true, message: `Renamed ${oldKey} to ${newKey}` });
+    } catch (e) {
+      console.error('Error renaming file in R2:', e);
+      return jsonResponse({ error: 'Failed to rename file.', details: e.message }, 500);
+    }
+  }
+  
   // Route: POST /api/store-detail/:id
   // Updates a single store detail entry
   if (request.method === 'POST' && pathSegments[0] === 'store-detail' && pathSegments[1]) {
@@ -176,13 +244,20 @@ export async function onRequest(context) {
         return jsonResponse({ error: 'No fields to update' }, 400);
       }
 
+      // Special handling for related_documents to ensure it's a string
+      const docIndex = fields.indexOf('related_documents');
+      if (docIndex > -1 && typeof values[docIndex] !== 'string') {
+        values[docIndex] = JSON.stringify(values[docIndex]);
+      }
+
       const setClause = fields.map(field => `${field} = ?`).join(', ');
 
       const stmt = env.DB.prepare(`UPDATE store_details SET ${setClause} WHERE store_id = ?`);
       await stmt.bind(...values, storeId).run();
 
       return jsonResponse({ success: true });
-    } catch (e) {
+    } catch (e)
+     {
       console.error('Error updating store detail:', e);
       return jsonResponse({
         error: 'Failed to update store detail.',
