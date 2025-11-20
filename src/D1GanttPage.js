@@ -224,8 +224,20 @@ const GanttChart = () => {
             const option = {
                 records, // Uses the state initialized from localStorage
                 markLine: markLines, // Uses the state initialized from localStorage
-                taskListTable: { columns, tableWidth: 390, theme: { headerStyle: { borderColor: '#e1e4e8', borderLineWidth: 0, fontSize: 18, fontWeight: 'bold', color: 'red' }, bodyStyle: { borderColor: '#e1e4e8', borderLineWidth: 0, fontSize: 16, color: '#4D4D4D', bgColor: '#FFF' } } },
-                frame: { outerFrameStyle: { borderLineWidth: 0, borderColor: 'red', cornerRadius: 8 } },
+                taskListTable: { columns, tableWidth: 'auto', theme: { headerStyle: { borderColor: '#e1e4e8', borderLineWidth: 0, fontSize: 18, fontWeight: 'bold', 'color': 'red' }, bodyStyle: { borderColor: '#e1e4e8', borderLineWidth: 0, fontSize: 16, color: '#4D4D4D', bgColor: '#FFF' } } },
+                frame: {
+                  outerFrameStyle: { borderLineWidth: 0, borderColor: 'red', cornerRadius: 8 },
+                  verticalSplitLine: {
+                    lineColor: '#d5d9ee',
+                    lineWidth: 2,
+                    visible: true
+                  },
+                  verticalSplitLineHighlight: {
+                    lineColor: '#1677ff', // A common highlight color
+                    lineWidth: 3,
+                    visible: true
+                  }
+                },
                 grid: { backgroundColor: '#f0f0fb', horizontalLine: { lineWidth: 2, lineColor: '#d5d9ee' } },
                 headerRowHeight: 60,
                 rowHeight: 80,
