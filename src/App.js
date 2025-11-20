@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useContext, useRef } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useParams, Navigate } from 'react-router-dom';
-import { Layout, Menu, Card, Table, Tag, Button, Space, Typography, Spin, Alert, Upload, message, Form, Input, Dropdown, Checkbox } from 'antd';
+import { Layout, Menu, Card, Table, Tag, Button, Space, Typography, Spin, Alert, Upload, message, Form, Input, Dropdown, Checkbox, Tooltip } from 'antd';
 import { MenuUnfoldOutlined, MenuFoldOutlined, UploadOutlined, PaperClipOutlined, FileTextOutlined, ShopOutlined, BarsOutlined, DownOutlined } from '@ant-design/icons';
 import { projects, locations } from './mockData';
 import GanttChart from './GanttChart';
@@ -259,48 +259,53 @@ const StoreDetailsPage = () => {
         width: 140,
         align: 'center',
         render: (text, record) => {
-          // 使用新的解析函数来处理可能包含单位的文本
-          const grossArea = parseNumericValue(record.building_area) || 1; // 确保除数不为0
-          const totalRent = parseNumericValue(record.rent);
-          const startupCosts = parseNumericValue(record.startup_costs);
+          const grossArea = parseNumericValue(record.building_area);
           const usableArea = parseNumericValue(record.usable_area);
-          
-          // 根据反馈，物业费字段现在是单价 (元/每平)
+          const totalRent = parseNumericValue(record.rent);
           const propFeePerSqm = parseNumericValue(record.property_fee);
+          const startupCosts = parseNumericValue(record.startup_costs);
           
-          // 租金/平米 = 月租总价 / 建筑面积
-          const rentPerSqm = totalRent / grossArea;
+          const rentPerSqm = (grossArea > 0) ? totalRent / grossArea : 0;
 
           const inputs = {
             gross_area: grossArea,
             net_area: usableArea,
             rent_per_sqm: rentPerSqm,
             prop_fee_per_sqm: propFeePerSqm,
-            staff_count: 4, // 默认值为4，因为表格中没有此列
             misc_startup_fee: startupCosts,
+            // staff_count is intentionally omitted to trigger the default and warning
           };
 
           const results = calculateROI(inputs);
 
-          if (results.error) {
-            return <Tag color="error">计算错误</Tag>;
-          }
-
-          if (results.payback_period === '亏损或无利润') {
-            return <Tag color="red">{results.payback_period}</Tag>;
-          }
+          const renderTag = () => {
+            if (results.error) {
+              return <Tag color="error">计算错误</Tag>;
+            }
+            if (results.payback_period === '亏损或无利润') {
+              return <Tag color="red">{results.payback_period}</Tag>;
+            }
+            const period = parseFloat(results.payback_period);
+            let color = 'default';
+            if (period <= 12) color = 'success';
+            else if (period <= 24) color = 'blue';
+            else color = 'warning';
+            return <Tag color={color}>{`${results.payback_period} 月`}</Tag>;
+          };
           
-          const period = parseFloat(results.payback_period);
-          let color = 'default';
-          if (period <= 12) {
-            color = 'success';
-          } else if (period <= 24) {
-            color = 'blue';
-          } else {
-            color = 'warning';
+          const tag = renderTag();
+
+          if (results.warnings && results.warnings.length > 0) {
+            const tooltipContent = (
+              <div>
+                <strong>计算提示:</strong>
+                {results.warnings.map((warning, i) => <div key={i}>- {warning}</div>)}
+              </div>
+            );
+            return <Tooltip title={tooltipContent}>{tag}</Tooltip>;
           }
 
-          return <Tag color={color}>{`${results.payback_period} 月`}</Tag>;
+          return tag;
         }
       },
     ];

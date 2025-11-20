@@ -39,14 +39,25 @@ export function parseNumericValue(value) {
 export function calculateROI(inputs) {
     const results = {};
     try {
+        const warnings = [];
+        
+        // Use destructured values for calculation, with defaults
         const {
             gross_area = 0,
             net_area = 0,
             rent_per_sqm = 0,
             prop_fee_per_sqm = 0,
-            staff_count = 0,
+            staff_count = 4, // Default to 4
             misc_startup_fee = 0
         } = inputs;
+
+        // Check original inputs to build the warning list
+        if (inputs.gross_area === undefined || inputs.gross_area === 0) warnings.push('建筑面积: 未提供或为0');
+        if (inputs.net_area === undefined || inputs.net_area === 0) warnings.push('套内面积: 未提供或为0');
+        if (inputs.rent_per_sqm === undefined || inputs.rent_per_sqm === 0) warnings.push('租金: 未提供或为0');
+        if (inputs.prop_fee_per_sqm === undefined || inputs.prop_fee_per_sqm === 0) warnings.push('物业费: 未提供或为0');
+        if (inputs.staff_count === undefined) warnings.push('员工数量: 使用默认值 (4)');
+        if (inputs.misc_startup_fee === undefined || inputs.misc_startup_fee === 0) warnings.push('开办杂费: 未提供或为0');
 
         const floor_area_ratio = 3.5;
         const estimated_machines = net_area / floor_area_ratio;
@@ -85,12 +96,13 @@ export function calculateROI(inputs) {
         results.total_investment = results.decoration_cost + ac_cost + furniture_cost + monitor_cost + 30000 + 10000 + 5000 + 10000 + misc_startup_fee;
 
         results.payback_period = results.monthly_net_profit > 0 ? (results.total_investment / results.monthly_net_profit).toFixed(2) : '亏损或无利润';
+        results.warnings = warnings; // Attach the warnings to the result
 
         return results;
 
     } catch (e) {
         console.error("Calculation Error:", e);
         // 返回一个包含错误信息的对象，以便调用者可以优雅地处理
-        return { error: e.message, payback_period: '计算错误' };
+        return { error: e.message, payback_period: '计算错误', warnings: ['计算时发生内部错误'] };
     }
 }
