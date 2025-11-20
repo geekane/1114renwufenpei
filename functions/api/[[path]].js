@@ -158,6 +158,40 @@ export async function onRequest(context) {
   }
 
 
+  // Route: POST /api/store-detail/:id
+  // Updates a single store detail entry
+  if (request.method === 'POST' && pathSegments[0] === 'store-detail' && pathSegments[1]) {
+    try {
+      const storeId = pathSegments[1];
+      const data = await request.json();
+
+      // We can't update the primary key, so remove it if it exists.
+      delete data.store_id;
+      delete data.key;
+
+      const fields = Object.keys(data);
+      const values = Object.values(data);
+      
+      if (fields.length === 0) {
+        return jsonResponse({ error: 'No fields to update' }, 400);
+      }
+
+      const setClause = fields.map(field => `${field} = ?`).join(', ');
+
+      const stmt = env.DB.prepare(`UPDATE store_details SET ${setClause} WHERE store_id = ?`);
+      await stmt.bind(...values, storeId).run();
+
+      return jsonResponse({ success: true });
+    } catch (e) {
+      console.error('Error updating store detail:', e);
+      return jsonResponse({
+        error: 'Failed to update store detail.',
+        details: e.message,
+        stack: e.stack,
+      }, 500);
+    }
+  }
+
   // Route: GET /api/store-details
   // Fetches store details from the database
   if (request.method === 'GET' && pathSegments[0] === 'store-details') {

@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useContext, useRef } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useParams } from 'react-router-dom';
-import { Layout, Menu, Card, Table, Tag, Button, Space, Typography, Spin, Alert, Upload, message } from 'antd';
+import { Layout, Menu, Card, Table, Tag, Button, Space, Typography, Spin, Alert, Upload, message, Form, Input } from 'antd';
 import { MenuUnfoldOutlined, MenuFoldOutlined, UploadOutlined, PaperClipOutlined, FileTextOutlined, ShopOutlined, BarsOutlined } from '@ant-design/icons';
 import { projects, locations } from './mockData';
 import GanttChart from './GanttChart';
@@ -41,6 +41,90 @@ const LocationSelectionPage = () => {
   );
 };
 
+const EditableContext = React.createContext(null);
+
+const EditableRow = ({ index, ...props }) => {
+  const [form] = Form.useForm();
+  return (
+    <Form form={form} component={false}>
+      <EditableContext.Provider value={form}>
+        <tr {...props} />
+      </EditableContext.Provider>
+    </Form>
+  );
+};
+
+const EditableCell = ({
+  title,
+  editable,
+  children,
+  dataIndex,
+  record,
+  handleSave,
+  ...restProps
+}) => {
+  const [editing, setEditing] = useState(false);
+  const inputRef = useRef(null);
+  const form = useContext(EditableContext);
+
+  useEffect(() => {
+    if (editing) {
+      inputRef.current?.focus();
+    }
+  }, [editing]);
+
+  const toggleEdit = () => {
+    setEditing(!editing);
+    form.setFieldsValue({
+      [dataIndex]: record[dataIndex],
+    });
+  };
+
+  const save = async () => {
+    try {
+      const values = await form.validateFields();
+      toggleEdit();
+      handleSave({ ...record, ...values });
+    } catch (errInfo) {
+      console.log('Save failed:', errInfo);
+    }
+  };
+
+  let childNode = children;
+
+  if (editable) {
+    childNode = editing ? (
+      <Form.Item
+        style={{
+          margin: 0,
+        }}
+        name={dataIndex}
+        rules={[
+          {
+            required: true,
+            message: `${title} is required.`,
+          },
+        ]}
+      >
+        <Input ref={inputRef} onPressEnter={save} onBlur={save} />
+      </Form.Item>
+    ) : (
+      <div
+        className="editable-cell-value-wrap"
+        style={{
+          paddingRight: 24,
+        }}
+        onClick={toggleEdit}
+      >
+        {children}
+      </div>
+    );
+  }
+
+  return <td {...restProps}>{childNode}</td>;
+};
+
+
  // --- New Store Details Page (已修改) ---
  const StoreDetailsPage = () => {
    const [storeDetails, setStoreDetails] = useState([]);
@@ -60,7 +144,7 @@ const LocationSelectionPage = () => {
        console.log("SUCCESS: Loaded store details from API.", data);
  
        if (Array.isArray(data.storeDetails)) {
-         setStoreDetails(data.storeDetails);
+         setStoreDetails(data.storeDetails.map(item => ({ ...item, key: item.store_id })));
        } else {
          console.error("ERROR: API response for storeDetails is not an array.", data);
          setError("数据格式错误");
@@ -82,6 +166,35 @@ const LocationSelectionPage = () => {
      fetchData();
    };
 
+   const handleSave = async (row) => {
+    const newData = [...storeDetails];
+    const index = newData.findIndex((item) => row.key === item.key);
+    if (index > -1) {
+      const item = newData[index];
+      newData.splice(index, 1, { ...item, ...row });
+      setStoreDetails(newData);
+
+      try {
+        const response = await fetch(`/api/store-detail/${row.store_id}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(row),
+        });
+        if (!response.ok) {
+          throw new Error('Failed to save data');
+        }
+        message.success('保存成功');
+      } catch (err) {
+        message.error('保存失败');
+        // rollback
+        newData.splice(index, 1, item);
+        setStoreDetails(newData);
+      }
+    }
+   };
+
    // 上传组件的配置 (模拟，不真实上传)
    const uploadProps = {
     name: 'file',
@@ -94,51 +207,46 @@ const LocationSelectionPage = () => {
     },
    };
  
-   // --- 核心修改：定义表格列 ---
-   const columns = [
-    // 1. 排序号 (最左固定)
-    { 
-        title: '序号', 
-        dataIndex: 'sort_order', 
-        key: 'sort_order', 
-        width: 60, 
-        fixed: 'left', // 固定在左侧
+   const defaultColumns = [
+    {
+        title: '序号',
+        dataIndex: 'sort_order',
+        key: 'sort_order',
+        width: 60,
+        fixed: 'left',
         align: 'center',
-        render: (text, record, index) => <b>{index + 1}</b> // 如果数据库没返回sort_order，就用索引
+        render: (text, record, index) => <b>{index + 1}</b>
     },
-    // 2. 门店名称 (最左固定)
-    { 
-        title: '门店名称', 
-        dataIndex: 'store_name', 
-        key: 'store_name', 
-        width: 120, 
+    {
+        title: '门店名称',
+        dataIndex: 'store_name',
+        key: 'store_name',
+        width: 120,
         fixed: 'left',
         render: (text, record) => (
           <Link to={`/gantt/${record.store_id}`} style={{ fontWeight: 'bold' }}>
             {text}
           </Link>
-        )
+        ),
+        editable: true,
     },
-    // 3. 新增：资料操作列 (上传按钮)
     {
       title: '资料操作',
       key: 'upload_action',
       width: 100,
-      fixed: 'left', // 固定方便操作
+      fixed: 'left',
       render: (_, record) => (
         <Upload {...uploadProps}>
           <Button icon={<UploadOutlined />} size="small" type="dashed">上传</Button>
         </Upload>
       ),
     },
-    // 4. 新增：已有文档列 (展示假数据)
-    { 
-        title: '已存文档', 
-        dataIndex: 'related_documents', 
+    {
+        title: '已存文档',
+        dataIndex: 'related_documents',
         key: 'related_documents',
         width: 200,
         render: (_, record, index) => {
-            // 模拟：偶数行显示一些假文件，奇数行显示空
             if (index % 2 === 0) {
                 return (
                     <Space direction="vertical" size={0}>
@@ -150,23 +258,45 @@ const LocationSelectionPage = () => {
             return <span style={{color: '#ccc'}}>暂无</span>
         }
     },
-     // --- 后续是原有的详细信息 ---
-     { title: '所处区域', dataIndex: 'district', key: 'district', width: 100 },
-     { title: '建筑面积', dataIndex: 'building_area', key: 'building_area', width: 100 },
-     { title: '套内面积', dataIndex: 'usable_area', key: 'usable_area', width: 100 },
-     { title: '租金', dataIndex: 'rent', key: 'rent', width: 100 },
-     { title: '免租期', dataIndex: 'rent_free_period', key: 'rent_free_period', width: 100 },
-     { title: '物业费', dataIndex: 'property_fee', key: 'property_fee', width: 80 },
-     { title: '电费', dataIndex: 'electricity_fee', key: 'electricity_fee', width: 80 },
-     { title: '水费', dataIndex: 'water_fee', key: 'water_fee', width: 80 },
-     { title: '付款方式', dataIndex: 'payment_method', key: 'payment_method', width: 100 },
-     { title: '租金递增', dataIndex: 'rent_increase', key: 'rent_increase', width: 120 },
-     { title: '合同年限', dataIndex: 'contract_years', key: 'contract_years', width: 100 },
-     { title: '门店属性', dataIndex: 'properties', key: 'properties', width: 150 },
-     { title: '开办杂费', dataIndex: 'startup_costs', key: 'startup_costs', width: 150 },
-     { title: '筹开进度', dataIndex: 'progress', key: 'progress', width: 200, ellipsis: true }, // 进度文字长，加上 ellipsis
-     { title: '回本周期', dataIndex: 'roi_period', key: 'roi_period', width: 100 },
+     { title: '所处区域', dataIndex: 'district', key: 'district', width: 100, editable: true },
+     { title: '建筑面积', dataIndex: 'building_area', key: 'building_area', width: 100, editable: true },
+     { title: '套内面积', dataIndex: 'usable_area', key: 'usable_area', width: 100, editable: true },
+     { title: '租金', dataIndex: 'rent', key: 'rent', width: 100, editable: true },
+     { title: '免租期', dataIndex: 'rent_free_period', key: 'rent_free_period', width: 100, editable: true },
+     { title: '物业费', dataIndex: 'property_fee', key: 'property_fee', width: 80, editable: true },
+     { title: '电费', dataIndex: 'electricity_fee', key: 'electricity_fee', width: 80, editable: true },
+     { title: '水费', dataIndex: 'water_fee', key: 'water_fee', width: 80, editable: true },
+     { title: '付款方式', dataIndex: 'payment_method', key: 'payment_method', width: 100, editable: true },
+     { title: '租金递增', dataIndex: 'rent_increase', key: 'rent_increase', width: 120, editable: true },
+     { title: '合同年限', dataIndex: 'contract_years', key: 'contract_years', width: 100, editable: true },
+     { title: '门店属性', dataIndex: 'properties', key: 'properties', width: 150, editable: true },
+     { title: '开办杂费', dataIndex: 'startup_costs', key: 'startup_costs', width: 150, editable: true },
+     { title: '筹开进度', dataIndex: 'progress', key: 'progress', width: 200, ellipsis: true, editable: true },
+     { title: '回本周期', dataIndex: 'roi_period', key: 'roi_period', width: 100, editable: true },
    ];
+
+    const components = {
+      body: {
+        row: EditableRow,
+        cell: EditableCell,
+      },
+    };
+
+    const columns = defaultColumns.map((col) => {
+      if (!col.editable) {
+        return col;
+      }
+      return {
+        ...col,
+        onCell: (record) => ({
+          record,
+          editable: col.editable,
+          dataIndex: col.dataIndex,
+          title: col.title,
+          handleSave,
+        }),
+      };
+    });
  
    return (
      <Card
@@ -183,12 +313,15 @@ const LocationSelectionPage = () => {
        {error && <Alert message={error} type="error" showIcon style={{ marginBottom: 16 }} />}
        <Spin spinning={loading}>
          <Table
-           columns={columns}
+           components={components}
+           rowClassName={() => 'editable-row'}
+           bordered
            dataSource={storeDetails}
-           rowKey={(record) => record.store_name + record.sort_order} // 确保 key 唯一
-           scroll={{ x: 2000 }} // 设置一个较大的 x 值，配合 fixed 列使用
-           pagination={{ defaultPageSize: 10 }} // 加上分页
-           size="middle" // 表格稍微紧凑一点
+           columns={columns}
+           rowKey="key"
+           scroll={{ x: 2000 }}
+           pagination={{ defaultPageSize: 10 }}
+           size="middle"
          />
        </Spin>
      </Card>
