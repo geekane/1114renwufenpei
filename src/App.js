@@ -224,7 +224,17 @@ const EditableCell = ({
       message.success(`${file.name} 上传成功`);
 
       // Update the record in the database
-      const currentDocs = record.related_documents ? JSON.parse(record.related_documents) : [];
+      let currentDocs = [];
+      try {
+        if (typeof record.related_documents === 'string') {
+          currentDocs = JSON.parse(record.related_documents);
+        } else if (Array.isArray(record.related_documents)) {
+          currentDocs = record.related_documents;
+        }
+      } catch (e) {
+        currentDocs = [];
+      }
+      
       const updatedDocs = [...currentDocs, {
         name: newFileData.name.substring(0, 5), // Truncate name
         key: newFileData.key,
