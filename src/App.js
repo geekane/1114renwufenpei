@@ -343,9 +343,10 @@ const EditableCell = ({
            )
        }
    },
-     { title: '所处区域', dataIndex: 'district', key: 'district', width: 100, editable: true },
-     { title: '建筑面积', dataIndex: 'building_area', key: 'building_area', width: 100, editable: true },
-     { title: '套内面积', dataIndex: 'usable_area', key: 'usable_area', width: 100, editable: true },
+   { title: '详细地址', dataIndex: 'detailed_address', key: 'detailed_address', width: 250, editable: true },
+    { title: '所处区域', dataIndex: 'district', key: 'district', width: 100, editable: true },
+    { title: '建筑面积', dataIndex: 'building_area', key: 'building_area', width: 100, editable: true },
+    { title: '套内面积', dataIndex: 'usable_area', key: 'usable_area', width: 100, editable: true },
      { title: '租金', dataIndex: 'rent', key: 'rent', width: 100, editable: true },
      { title: '免租期', dataIndex: 'rent_free_period', key: 'rent_free_period', width: 100, editable: true },
      { title: '物业费', dataIndex: 'property_fee', key: 'property_fee', width: 80, editable: true },
