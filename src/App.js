@@ -146,7 +146,20 @@ const EditableCell = ({
        console.log("SUCCESS: Loaded store details from API.", data);
  
        if (Array.isArray(data.storeDetails)) {
-         setStoreDetails(data.storeDetails.map(item => ({ ...item, key: item.store_id })));
+        const processedDetails = data.storeDetails.map(item => {
+          let docs = [];
+          try {
+            if (typeof item.related_documents === 'string') {
+              docs = JSON.parse(item.related_documents);
+            } else if (Array.isArray(item.related_documents)) {
+              docs = item.related_documents;
+            }
+          } catch (e) {
+            console.error("Failed to parse related_documents for item:", item);
+          }
+          return { ...item, key: item.store_id, related_documents: docs };
+        });
+        setStoreDetails(processedDetails);
        } else {
          console.error("ERROR: API response for storeDetails is not an array.", data);
          setError("数据格式错误");
@@ -177,9 +190,12 @@ const EditableCell = ({
       setStoreDetails(newData); // Optimistic UI update
 
       const dataToSave = { ...row };
-      // CRITICAL: Ensure related_documents is a string for the backend.
+      // CRITICAL: Always stringify related_documents before sending to backend
       if (Array.isArray(dataToSave.related_documents)) {
         dataToSave.related_documents = JSON.stringify(dataToSave.related_documents);
+      } else {
+        // Handle cases where it might be null/undefined or already a string
+        dataToSave.related_documents = dataToSave.related_documents || '[]';
       }
 
       try {
@@ -188,13 +204,18 @@ const EditableCell = ({
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify(dataToSave), // Send the processed data
+          body: JSON.stringify(dataToSave),
         });
         if (!response.ok) {
+          const errorBody = await response.text();
+          console.error("Save failed response body:", errorBody);
           throw new Error('Failed to save data to D1');
         }
         message.success('保存成功');
+        // Optional: refetch to ensure full sync, though optimistic update should suffice
+        // fetchData();
       } catch (err) {
+        console.error("Save error:", err);
         message.error('保存失败，正在回滚...');
         // Rollback UI on failure
         newData.splice(index, 1, item);
@@ -223,17 +244,8 @@ const EditableCell = ({
       onSuccess(newFileData);
       message.success(`${file.name} 上传成功`);
 
-      // Update the record in the database
-      let currentDocs = [];
-      try {
-        if (typeof record.related_documents === 'string') {
-          currentDocs = JSON.parse(record.related_documents);
-        } else if (Array.isArray(record.related_documents)) {
-          currentDocs = record.related_documents;
-        }
-      } catch (e) {
-        currentDocs = [];
-      }
+      // State now consistently uses arrays for related_documents
+      const currentDocs = Array.isArray(record.related_documents) ? record.related_documents : [];
       
       const updatedDocs = [...currentDocs, {
         name: newFileData.name.substring(0, 5), // Truncate name
