@@ -221,29 +221,9 @@ const GanttChart = () => {
 
             const simplePlusIcon = '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" fill=""/></svg>';
             
-            const todayString = formatDate(new Date());
-            const todayMarkLine = {
-                date: todayString,
-                content: {
-                    text: '今日',
-                    style: {
-                        color: '#fff',
-                        fontSize: 12,
-                        padding: [4, 8],
-                        background: { fill: '#1677ff' },
-                        cornerRadius: 4
-                    }
-                },
-                style: {
-                    lineWidth: 2,
-                    lineColor: '#1677ff',
-                    lineDash: [4, 4]
-                }
-            };
-
             const option = {
                 records, // Uses the state initialized from localStorage
-                markLine: [...markLines, todayMarkLine], // Dynamically add today's mark line
+                markLine: markLines, // Uses the state initialized from localStorage
                 taskListTable: { columns, tableWidth: 'auto', theme: { headerStyle: { borderColor: '#e1e4e8', borderLineWidth: 0, fontSize: 18, fontWeight: 'bold', 'color': 'red' }, bodyStyle: { borderColor: '#e1e4e8', borderLineWidth: 0, fontSize: 16, color: '#4D4D4D', bgColor: '#FFF' } } },
                 frame: {
                   outerFrameStyle: { borderLineWidth: 0, borderColor: 'red', cornerRadius: 8 },
@@ -303,9 +283,6 @@ const GanttChart = () => {
 
             const ganttInstance = new VTableGantt.Gantt(containerRef.current, option);
             instanceRef.current = ganttInstance;
-
-            // Scroll to today's date on initial load
-            ganttInstance.scrollToDate(new Date());
 
             const handleCellEdit = (args) => {
                 const { col, row, field, value } = args;
