@@ -54,19 +54,22 @@ const getCoordinates = (address) => {
  */
 const searchNearby = (location, radius, types, keywords) => {
     return new Promise((resolve, reject) => {
-        const placeSearch = new AMap.PlaceSearch({ pageSize: 50, pageIndex: 1 });
-        const searchOptions = {
-            city: '全国', // 在指定经纬度周边搜索，城市限制作用不大
-        };
-        if (types) searchOptions.type = types;
-        
-        placeSearch.searchNear(location, radius, searchOptions, (status, result) => {
+        const placeSearch = new AMap.PlaceSearch({
+            pageSize: 50,
+            pageIndex: 1,
+            type: types || '' // 在构造函数中设置POI类型
+        });
+
+        // searchNearBy的第一个参数是关键字
+        const searchKeyword = keywords || '';
+
+        placeSearch.searchNearBy(searchKeyword, location, radius, (status, result) => {
             if (status === 'complete' && result.info === 'OK') {
                 resolve(result.poiList.pois);
             } else if (status === 'no_data') {
-                resolve([]);
+                resolve([]); // 没有数据是有效的结果
             } else {
-                reject(new Error(`周边搜索失败: ${result.info}`));
+                reject(new Error(`周边搜索失败 for [${searchKeyword || types}]: ${result.info}`));
             }
         });
     });
