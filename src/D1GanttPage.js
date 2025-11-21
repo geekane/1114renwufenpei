@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, Link } from 'react-router-dom';
 import { Button, Space, message } from 'antd'; // 引入 Ant Design 的 Button, Space 和 message 组件
 import * as VTable from '@visactor/vtable';
 import * as VTableGantt from '@visactor/vtable-gantt';
@@ -439,6 +439,9 @@ const GanttChart = () => {
                 </Space>
                 
                 <Space>
+                    <Link to={`/crowd-portrait/${storeId}`}>
+                        <Button>人群画像分析</Button>
+                    </Link>
                     <Button
                         onClick={handleRefresh}
                         disabled={isLoading}

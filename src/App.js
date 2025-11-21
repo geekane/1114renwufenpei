@@ -6,6 +6,7 @@ import { projects, locations } from './mockData';
 import GanttChart from './GanttChart';
 import { calculateROI, parseNumericValue } from './roiCalculator';
 import D1GanttPage from './D1GanttPage'; // Import the new page
+import CrowdPortraitPage from './CrowdPortraitPage'; // Import the crowd portrait page
 import './Responsive.css';
 
 const { Header, Content, Sider } = Layout;
@@ -598,6 +599,7 @@ function App() {
             <Route path="/" element={<Navigate to="/store-details" replace />} />
             <Route path="/projects/:projectId" element={<ProjectPage />} />
             <Route path="/gantt/:storeId" element={<D1GanttPage />} />
+            <Route path="/crowd-portrait/:storeId" element={<CrowdPortraitPage />} />
             <Route path="/location-selection" element={<LocationSelectionPage />} />
           </Routes>
         </Content>
