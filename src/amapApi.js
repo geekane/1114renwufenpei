@@ -53,21 +53,52 @@ const getCoordinates = (address) => {
  * @returns {Promise<Array>} - 返回POI点数组的Promise
  */
 const searchNearby = (location, radius, types, keywords) => {
+    // If keywords contain '|', we need to do multiple searches
+    if (keywords && keywords.includes('|')) {
+        const keywordList = keywords.split('|');
+        const searchPromises = keywordList.map(kw => {
+            // Return a new promise for each keyword search
+            return new Promise((res, rej) => {
+                const placeSearch = new AMap.PlaceSearch({
+                    pageSize: 50,
+                    pageIndex: 1,
+                    type: types || ''
+                });
+                placeSearch.searchNearBy(kw, location, radius, (status, result) => {
+                    if (status === 'complete' && result.info === 'OK') {
+                        res(result.poiList.pois);
+                    } else if (status === 'no_data') {
+                        res([]);
+                    } else {
+                        // Reject with a more informative error
+                        rej(new Error(`周边搜索失败 for [${kw}]: ${result.info}`));
+                    }
+                });
+            });
+        });
+        // When all searches are done, combine the results
+        return Promise.all(searchPromises)
+            .then(resultsArray => {
+                // Flatten the array of arrays into a single array of POIs
+                return [].concat(...resultsArray);
+            });
+    }
+
+    // Original logic for single keyword or type search
     return new Promise((resolve, reject) => {
         const placeSearch = new AMap.PlaceSearch({
             pageSize: 50,
             pageIndex: 1,
-            type: types || '' // 在构造函数中设置POI类型
+            type: types || ''
         });
 
-        // searchNearBy的第一个参数是关键字
         const searchKeyword = keywords || '';
 
         placeSearch.searchNearBy(searchKeyword, location, radius, (status, result) => {
             if (status === 'complete' && result.info === 'OK') {
                 resolve(result.poiList.pois);
             } else if (status === 'no_data') {
-                resolve([]); // 没有数据是有效的结果
+                resolve([]);
             } else {
                 reject(new Error(`周边搜索失败 for [${searchKeyword || types}]: ${result.info}`));
             }
