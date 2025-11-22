@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>点位猎人 Dashboard V11.1 (Minimal)</title>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+    <style>
+        :root {
+            /* 极简磨砂暗色系 */
+            --bg-color: #141414;       /* 整体背景 */
+            --card-bg: #1f1f1f;        /* 卡片背景 */
+            --sidebar-bg: #1a1a1a;     /* 左侧日志栏背景 */
+            
+            /* 功能色 - 降低饱和度，更高级 */
+            --primary: #4cc9f0;        /* 主色调：清爽蓝 */
+            --accent: #7209b7;         /* 辅助色：紫 */
+            --success: #4ade80;        /* 成功：柔和绿 */
+            --warning: #facc15;        /* 警告：柔和黄 */
+            --danger: #f87171;         /* 危险：柔和红 */
+            
+            --text-main: #e5e5e5;
+            --text-sub: #a3a3a3;
+            --border: #333333;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; outline: none; }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* 顶部栏 - 极简去框 */
+        header {
+            background-color: var(--bg-color);
+            padding: 0 25px;
+            height: 60px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--border);
+        }
+        
+        h1 { 
+            font-size: 18px; 
+            font-weight: 600; 
+            color: var(--text-main); 
+            display: flex; 
+            align-items: center; 
+            gap: 10px;
+        }
+        h1 span { font-size: 12px; color: var(--text-sub); font-weight: 400; background: #333; padding: 2px 6px; border-radius: 4px;}
+
+        /* 输入控件组 - 扁平化 */
+        .controls { display: flex; gap: 10px; }
+        
+        input { 
+            background: var(--card-bg); 
+            border: 1px solid var(--border); 
+            color: var(--text-main); 
+            padding: 6px 12px; 
+            border-radius: 6px; 
+            font-size: 13px;
+            transition: all 0.2s;
+        }
+        input:focus { border-color: var(--primary); background: #262626; }
+        
+        button { 
+            background: var(--primary); 
+            border: none; 
+            padding: 6px 18px; 
+            color: #000; 
+            font-size: 13px; 
+            font-weight: 600; 
+            border-radius: 6px; 
+            cursor: pointer; 
+        }
+        button:hover { opacity: 0.9; }
+        button.demo-btn { background: transparent; border: 1px solid var(--border); color: var(--text-sub); }
+        button.demo-btn:hover { border-color: var(--text-main); color: var(--text-main); }
+
+        /* 主布局 - 调整间距 */
+        .dashboard {
+            flex: 1;
+            padding: 20px;
+            display: grid;
+            grid-template-columns: 320px 1fr 380px;
+            grid-template-rows: 1.8fr 1.2fr;
+            gap: 20px;
+            height: calc(100vh - 60px);
+        }
+
+        .card {
+            background: var(--card-bg);
+            border-radius: 12px; /* 更圆润 */
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            /* 移除阴影，扁平化 */
+        }
+
+        .card-title { 
+            font-size: 12px; 
+            color: var(--text-sub); 
+            font-weight: 600; 
+            letter-spacing: 0.5px; 
+            margin-bottom: 15px; 
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        /* 区域定义 */
+        .area-log { grid-column: 1 / 2; grid-row: 1 / 3; background: var(--sidebar-bg); border-right: 1px solid var(--border); border-radius: 0; margin: -20px 0 -20px -20px; padding: 20px 0 20px 20px; } 
+        /* 左侧日志栏特殊处理：通顶，背景略深 */
+        
+        .area-score { grid-column: 2 / 3; grid-row: 1 / 2; display: flex; flex-direction: row; align-items: center; }
+        .area-radar { grid-column: 3 / 4; grid-row: 1 / 2; }
+        .area-details { grid-column: 2 / 4; grid-row: 2 / 3; }
+
+        /* 日志窗口 - 极简字体 */
+        .log-window { 
+            flex: 1; 
+            overflow-y: auto; 
+            font-family: 'JetBrains Mono', 'Consolas', monospace; 
+            font-size: 12px; 
+            color: var(--text-sub); 
+            line-height: 1.6; 
+            padding-right: 15px; 
+        }
+        .log-window::-webkit-scrollbar { width: 4px; }
+        .log-window::-webkit-scrollbar-thumb { background: #333; border-radius: 2px; }
+        .log-entry { margin-bottom: 5px; }
+        .log-entry span.time { color: #555; margin-right: 8px; }
+        .log-entry.highlight { color: var(--text-main); font-weight: 600; }
+        .log-entry.success { color: var(--success); }
+        .log-entry.error { color: var(--danger); }
+
+        /* 评分区域 */
+        .score-wrapper { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+        .info-wrapper { flex: 1; padding-left: 30px; border-left: 1px solid var(--border); height: 80%; display: flex; flex-direction: column; justify-content: center; }
+        
+        .grade-big { font-size: 48px; font-weight: 800; line-height: 1; margin-bottom: 5px; }
+        .suggestion-box { font-size: 14px; color: var(--text-sub); background: rgba(255,255,255,0.03); padding: 12px; border-radius: 6px; margin-top: 15px; border-left: 3px solid var(--border); }
+
+        .score-item { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 13px; }
+        .score-item .label { color: var(--text-sub); }
+        .score-item .val { font-weight: 600; font-family: monospace; }
+
+        /* 图表容器 */
+        .chart-box { width: 100%; height: 100%; }
+        
+        /* Loading */
+        #loading { position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.7); backdrop-filter: blur(5px); z-index: 999; display: none; justify-content: center; align-items: center; flex-direction: column; }
+        .spinner { width: 40px; height: 40px; border: 3px solid rgba(255,255,255,0.1); border-top-color: var(--primary); border-radius: 50%; animation: spin 0.8s linear infinite; }
+        @keyframes spin { 100% { transform: rotate(360deg); } }
+
+    </style>
+</head>
+<body>
+
+<header>
+    <h1>点位猎人 <span>V11.1</span></h1>
+    <div class="controls">
+        <input type="text" id="apiKey" placeholder="高德 Key" style="width: 200px;">
+        <input type="text" id="addressInput" placeholder="地址" value="成都东原时光道" style="width: 180px;">
+        <input type="number" id="radiusInput" placeholder="半径" value="800" style="width: 70px;">
+        <button onclick="startAnalysis()">分析</button>
+        <button class="demo-btn" onclick="runDemo()">演示</button>
+    </div>
+</header>
+
+<div id="loading">
+    <div class="spinner"></div>
+    <p style="margin-top:15px; font-size:12px; color:#999;">DATAMINING...</p>
+</div>
+
+<div class="dashboard">
+    <!-- 1. LOGS -->
+    <div class="card area-log">
+        <div class="card-title">运行日志 / LOGS</div>
+        <div class="log-window" id="logConsole">
+            <div class="log-entry"><span class="time">SYSTEM</span>等待指令...</div>
+        </div>
+    </div>
+
+    <!-- 2. SCORE CENTER -->
+    <div class="card area-score">
+        <div class="score-wrapper">
+            <div id="gaugeChart" style="width: 220px; height: 220px;"></div>
+        </div>
+        <div class="info-wrapper">
+            <div class="card-title">评估结果 / RESULT</div>
+            <div>
+                <span id="gradeDisplay" class="grade-big">--</span>
+            </div>
+            <div class="suggestion-box" id="suggestionDisplay">
+                输入地址开始分析...
+            </div>
+            <div style="margin-top: 20px; width: 100%;">
+                <div class="score-item"><span class="label">核心客群</span><span class="val" id="score-core" style="color:var(--primary)">0</span></div>
+                <div class="score-item"><span class="label">商业协同</span><span class="val" id="score-biz" style="color:var(--accent)">0</span></div>
+                <div class="score-item"><span class="label">竞争压力</span><span class="val" id="score-comp" style="color:var(--danger)">0</span></div>
+                <div class="score-item"><span class="label">消费画像</span><span class="val" id="score-cost" style="color:var(--warning)">0</span></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 3. RADAR -->
+    <div class="card area-radar">
+        <div class="card-title">五维模型 / DIMENSIONS</div>
+        <div id="radarChart" class="chart-box"></div>
+    </div>
+
+    <!-- 4. BAR CHART -->
+    <div class="card area-details">
+        <div class="card-title">业态分布 / DISTRIBUTION</div>
+        <div id="barChart" class="chart-box"></div>
+    </div>
+</div>
+
+<script>
+    // --- 配置区 ---
+    const CONFIG = {
+        positive: {
+            "商场购物": {weight: 2.5, category: "核心客群", saturation: 5},
+            "大中专院校": {weight: 2.2, category: "核心客群", saturation: 5},
+            "写字楼": {weight: 1.8, category: "核心客群", saturation: 20},
+            "住宅小区": {weight: 1.5, category: "核心客群", saturation: 25},
+            "青年公寓": {weight: 2.0, category: "协同业态", saturation: 15},
+            "夜市美食": {weight: 1.8, category: "协同业态", saturation: 5},
+            "电影院": {weight: 1.6, category: "协同业态", saturation: 5},
+            "网咖竞对": {weight: -4.0, category: "直接竞争", is_negative: true},
+            "中小学校": {weight: -10.0, category: "政策风险", is_negative: true},
+        }
+    };
+
+    // --- ECharts 初始化 (Minimal Style) ---
+    const chartColors = {
+        line: '#4cc9f0',
+        area: 'rgba(76, 201, 240, 0.2)',
+        grid: '#333',
+        text: '#a3a3a3'
+    };
+
+    let radarChart = echarts.init(document.getElementById('radarChart'));
+    let gaugeChart = echarts.init(document.getElementById('gaugeChart'));
+    let barChart = echarts.init(document.getElementById('barChart'));
+
+    window.onresize = function() {
+        radarChart.resize();
+        gaugeChart.resize();
+        barChart.resize();
+    };
+
+    function initCharts() {
+        // 雷达图 - 解决溢出问题：调整Max，并在后续Update时做Clamp
+        radarChart.setOption({
+            radar: {
+                // 这里的 max 设置为了更宽容的数值，防止溢出
+                indicator: [
+                    { name: '核心客流', max: 100 }, 
+                    { name: '商业协同', max: 80 },
+                    { name: '基础设施', max: 80 },
+                    { name: '竞争环境', max: 80 },
+                    { name: '消费匹配', max: 60 }
+                ],
+                radius: '65%',
+                splitNumber: 4,
+                axisName: { color: chartColors.text, fontSize: 11 },
+                splitLine: { lineStyle: { color: '#2a2a2a' } },
+                splitArea: { show: false },
+                axisLine: { lineStyle: { color: '#2a2a2a' } }
+            },
+            series: []
+        });
+
+        // 仪表盘 - 极简圆环
+        gaugeChart.setOption({
+            series: [{
+                type: 'gauge',
+                startAngle: 90, endAngle: -270,
+                min: 0, max: 200,
+                pointer: { show: false },
+                progress: { show: true, overlap: false, roundCap: true, clip: false, itemStyle: { color: chartColors.line } },
+                axisLine: { lineStyle: { width: 8, color: [[1, '#2a2a2a']] } },
+                splitLine: { show: false },
+                axisTick: { show: false },
+                axisLabel: { show: false },
+                detail: { fontSize: 28, offsetCenter: [0, '0%'], valueAnimation: true, formatter: '{value}', color: '#fff', fontWeight: 'bold' },
+                data: [{ value: 0 }]
+            }]
+        });
+
+        // 柱状图 - 极简
+        barChart.setOption({
+            grid: { top: 10, bottom: 20, left: 30, right: 10 },
+            tooltip: { trigger: 'axis', backgroundColor: 'rgba(0,0,0,0.8)', borderColor: '#333', textStyle: {color: '#fff'} },
+            xAxis: { type: 'category', data: [], axisLabel: { color: chartColors.text, fontSize: 10, interval:0 }, axisLine: { show: false }, axisTick: { show: false } },
+            yAxis: { type: 'value', splitLine: { lineStyle: { color: '#2a2a2a', type: 'dashed' } }, axisLabel: { color: chartColors.text } },
+            series: [{ type: 'bar', barWidth: '40%', itemStyle: { color: chartColors.line, borderRadius: [2, 2, 0, 0] }, data: [] }]
+        });
+    }
+    initCharts();
+
+    // --- 逻辑部分 ---
+    function log(msg, type='') {
+        const consoleDiv = document.getElementById('logConsole');
+        const time = new Date().toLocaleTimeString([], {hour12:false});
+        const div = document.createElement('div');
+        div.className = `log-entry ${type}`;
+        div.innerHTML = `<span class="time">${time}</span>${msg}`;
+        consoleDiv.appendChild(div);
+        consoleDiv.scrollTop = consoleDiv.scrollHeight;
+    }
+
+    function runDemo() {
+        document.getElementById('loading').style.display = 'flex';
+        log("启动演示模式...", 'highlight');
+        
+        setTimeout(() => {
+            const simScore = 88.5;
+            const scores = { core: 65, biz: 42, comp: 12, risk: 0, cost: 10 };
+            const infraScore = 25; // 模拟基础设施分
+            
+            const poiData = Object.keys(CONFIG.positive).map(k => ({ name: k, count: Math.floor(Math.random() * 10) }));
+
+            updateUI(simScore, scores, poiData, infraScore);
+            document.getElementById('loading').style.display = 'none';
+            log("演示分析完成", 'success');
+        }, 1000);
+    }
+
+    async function startAnalysis() {
+        const apiKey = document.getElementById('apiKey').value.trim();
+        const address = document.getElementById('addressInput').value.trim();
+        const radius = parseInt(document.getElementById('radiusInput').value);
+
+        if (!apiKey) { alert("请填写API Key或使用演示模式"); return; }
+        if (!address) { alert("请填写地址"); return; }
+
+        document.getElementById('loading').style.display = 'flex';
+        log(`开始分析: ${address}`, 'highlight');
+
+        try {
+            const geoRes = await fetch(`https://restapi.amap.com/v3/geocode/geo?key=${apiKey}&address=${address}`);
+            const geoData = await geoRes.json();
+            if (geoData.status !== '1' || geoData.count === '0') throw new Error("地址无法解析");
+            
+            const location = geoData.geocodes[0].location;
+            log(`定位成功: ${location}`);
+
+            let totalScore = 0;
+            const scores = { core: 0, biz: 0, comp: 0, risk: 0, cost: 0 };
+            const poiCounts = [];
+            let infraScore = 0; // 基础设施分单独统计
+
+            // 并行请求加速
+            const promises = Object.entries(CONFIG.positive).map(async ([name, config]) => {
+                const searchRes = await fetch(`https://restapi.amap.com/v3/place/around?key=${apiKey}&location=${location}&radius=${radius}&keywords=${name}&offset=20&page=1`);
+                const searchData = await searchRes.json();
+                let count = (searchData.status === '1') ? parseInt(searchData.count) : 0;
+                
+                let impact = 0;
+                if (count > 0) {
+                    let effective = config.saturation ? config.saturation * (1 - Math.exp(-count / config.saturation)) : count;
+                    impact = effective * config.weight;
+                }
+
+                return { name, config, count, impact };
+            });
+
+            const results = await Promise.all(promises);
+
+            results.forEach(r => {
+                if (r.config.is_negative) {
+                    if (r.config.category === '直接竞争') scores.comp += Math.abs(r.impact);
+                    if (r.config.category === '政策风险') scores.risk += Math.abs(r.impact);
+                    totalScore -= Math.abs(r.impact);
+                } else {
+                    if (r.config.category === '核心客群') scores.core += r.impact;
+                    if (r.config.category === '协同业态') scores.biz += r.impact;
+                    totalScore += r.impact;
+                }
+                poiCounts.push({name: r.name, count: r.count});
+                if (r.count > 0) log(`发现 ${r.name}: ${r.count}个`);
+            });
+
+            // 简单模拟基础设施分（如果有地铁/公交接口可替换）
+            infraScore = 15; // 默认基础分
+            totalScore += infraScore;
+
+            // 消费画像
+            log("分析消费水平...");
+            const foodRes = await fetch(`https://restapi.amap.com/v3/place/around?key=${apiKey}&location=${location}&radius=${radius}&types=050000&offset=20&show_fields=business`);
+            const foodData = await foodRes.json();
+            let avgCost = 30;
+            if (foodData.pois && foodData.pois.length > 0) {
+                let total = 0, num = 0;
+                foodData.pois.forEach(p => {
+                    if (p.biz_ext && p.biz_ext.cost) { total += parseFloat(p.biz_ext.cost); num++; }
+                });
+                if (num > 0) avgCost = total / num;
+            }
+            
+            let costBonus = (avgCost <= 35) ? 20 : (avgCost <= 50 ? 10 : (avgCost <= 80 ? -5 : -15));
+            scores.cost = costBonus;
+            totalScore += costBonus;
+
+            updateUI(totalScore, scores, poiCounts, infraScore);
+            log(`分析完成，总分: ${totalScore.toFixed(1)}`, 'success');
+
+        } catch (e) {
+            log(e.message, 'error');
+        } finally {
+            document.getElementById('loading').style.display = 'none';
+        }
+    }
+
+    function updateUI(totalScore, scores, poiData, infraScore = 20) {
+        // 1. 评级
+        let cleanScore = Math.max(0, totalScore);
+        const gradeEl = document.getElementById('gradeDisplay');
+        const suggEl = document.getElementById('suggestionDisplay');
+        let grade = "D", color = "#f87171", sugg = "缺乏核心支撑，风险较高";
+        
+        if (scores.risk > 15) { grade = "F"; sugg = "存在严重政策风险(学校)，一票否决"; color = "#f87171"; }
+        else if (totalScore >= 150) { grade = "S"; sugg = "顶级商圈，客流充沛，强烈推荐"; color = "#4ade80"; }
+        else if (totalScore >= 110) { grade = "A"; sugg = "核心区域，各项指标优秀"; color = "#4cc9f0"; }
+        else if (totalScore >= 60) { grade = "B"; sugg = "潜力区域，存在一定短板"; color = "#facc15"; }
+
+        gradeEl.textContent = grade;
+        gradeEl.style.color = color;
+        suggEl.textContent = sugg;
+        suggEl.style.borderLeftColor = color;
+
+        // 2. 更新文本数值
+        document.getElementById('score-core').innerText = scores.core.toFixed(1);
+        document.getElementById('score-biz').innerText = scores.biz.toFixed(1);
+        document.getElementById('score-comp').innerText = scores.comp.toFixed(1);
+        document.getElementById('score-cost').innerText = scores.cost > 0 ? `+${scores.cost}` : scores.cost;
+
+        // 3. 图表更新
+        gaugeChart.setOption({
+            series: [{ 
+                data: [{ value: cleanScore.toFixed(0) }],
+                itemStyle: { color: color }
+            }]
+        });
+
+        // **关键修复**：雷达图数值钳位 (Clamp) 防止超出
+        // 对应 indicator: 核心(100), 协同(80), 基础(80), 竞争(80), 消费(60)
+        // 竞争分我们为了展示好看，通常做反向处理（分越高图越小），或者直接展示压力值（分越高图越大）。这里展示压力值。
+        // 消费分做绝对值偏移处理便于展示
+        
+        const radarData = [
+            Math.min(scores.core, 100), // 限制最大100
+            Math.min(scores.biz, 80),   // 限制最大80
+            Math.min(infraScore, 80),
+            Math.min(scores.comp * 2, 80), // 竞争分通常较小，放大一点显示，但限制在80
+            Math.min(Math.max(scores.cost + 30, 0), 60) // 将消费分(-15~20)映射到正数区间并限制
+        ];
+
+        radarChart.setOption({
+            series: [{
+                type: 'radar',
+                data: [{
+                    value: radarData,
+                    name: '模型分析',
+                    areaStyle: { color: chartColors.area },
+                    lineStyle: { color: chartColors.line }
+                }]
+            }]
+        });
+
+        barChart.setOption({
+            xAxis: { data: poiData.map(i => i.name) },
+            series: [{ data: poiData.map(i => i.count) }]
+        });
+    }
+
+</script>
+</body>
+</html>

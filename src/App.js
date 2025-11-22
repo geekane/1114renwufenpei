@@ -453,24 +453,28 @@ const StoreDetailsPage = () => {
     };
   });
 
-  const menu = (
-    <Menu>
-      <Checkbox.Group
-        // 4. 这里的选项也使用最新的列定义
-        options={allColumnsCurrent.filter(c => c.fixed !== 'left').map(c => ({ label: c.title, value: c.key }))}
-        value={visibleColumnKeys}
-        onChange={setVisibleColumnKeys}
-        style={{ display: 'flex', flexDirection: 'column', padding: 10 }}
-      />
-    </Menu>
-  );
-
   return (
     <Card
       title="门店详情列表"
       extra={
         <Space>
-          <Dropdown overlay={menu} trigger={['click']}>
+          <Dropdown menu={{
+              items: [
+                {
+                  key: '1',
+                  label: (
+                    <Checkbox.Group
+                      options={allColumnsCurrent.filter(c => c.fixed !== 'left').map(c => ({ label: c.title, value: c.key }))}
+                      value={visibleColumnKeys}
+                      onChange={setVisibleColumnKeys}
+                      style={{ display: 'flex', flexDirection: 'column', padding: 10 }}
+                    />
+                  )
+                }
+              ],
+              // Prevent menu from closing on click
+              onClick: e => e.stopPropagation(),
+            }} trigger={['click']}>
             <Button>自定义列 <DownOutlined /></Button>
           </Dropdown>
           <Button type="primary" disabled>批量导出</Button>
@@ -528,9 +532,19 @@ function App() {
     const fetchStores = async () => {
       try {
         const response = await fetch('/api/store-details');
-        const data = await response.json();
-        if (Array.isArray(data.storeDetails)) {
-          setStores(data.storeDetails);
+        if (!response.ok) {
+          // If response is not ok, we don't try to parse it as JSON
+          throw new Error(`Failed to fetch stores: ${response.statusText}`);
+        }
+        const text = await response.text();
+        try {
+          const data = JSON.parse(text);
+          if (Array.isArray(data.storeDetails)) {
+            setStores(data.storeDetails);
+          }
+        } catch (e) {
+          console.error("Failed to parse JSON for store list:", text);
+          // Don't throw here, just log it, so the rest of the app can render.
         }
       } catch (error) {
         console.error("Failed to fetch stores for menu:", error);
@@ -592,7 +606,7 @@ function App() {
           margin: '24px 16px',
           padding: 24,
           background: '#fff',
-          overflowX: 'auto' 
+          overflowX: 'auto'
         }}>
           <Routes>
             <Route path="/store-details" element={<StoreDetailsPage />} />

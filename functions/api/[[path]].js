@@ -267,6 +267,74 @@ export async function onRequest(context) {
     }
   }
 
+  // Route: GET /api/amap-key
+  // Securely provides the AMap API key to the frontend
+  if (request.method === 'GET' && pathSegments[0] === 'amap-key') {
+    // It's recommended to store secrets in Cloudflare Pages environment variables
+    // and access them via env.AMAP_KEY. For this example, we'll use a hardcoded key
+    // as per the instructions, but this is not best practice.
+    const apiKey = "cfed97bf5c90224abbbb2ede4c008d0b";
+    return jsonResponse({ apiKey });
+  }
+
+  // Route: GET /api/portrait/:storeId
+  // Fetches cached portrait analysis for a specific store
+  if (request.method === 'GET' && pathSegments[0] === 'portrait' && pathSegments[1]) {
+    const storeId = pathSegments[1];
+    try {
+      const stmt = env.DB.prepare(
+        'SELECT portrait_score, portrait_rating, portrait_recommendation, portrait_details FROM store_details WHERE store_id = ?'
+      ).bind(storeId);
+      const data = await stmt.first();
+
+      if (data && data.portrait_score !== null) {
+        // If data exists and is valid, return it.
+        return jsonResponse({
+            ...data,
+            // Ensure details are parsed from JSON string if stored as TEXT
+            portrait_details: typeof data.portrait_details === 'string' ? JSON.parse(data.portrait_details) : data.portrait_details
+        });
+      } else {
+        // No cached data found
+        return jsonResponse({ message: "No cached portrait data found." }, 404);
+      }
+    } catch (e) {
+      console.error('Error fetching portrait data:', e);
+      return jsonResponse({ error: 'Failed to fetch portrait data.', details: e.message }, 500);
+    }
+  }
+
+  // Route: POST /api/portrait/:storeId
+  // Saves new portrait analysis data to the database for a specific store
+  if (request.method === 'POST' && pathSegments[0] === 'portrait' && pathSegments[1]) {
+    const storeId = pathSegments[1];
+    try {
+      const { portrait_score, portrait_rating, portrait_recommendation, portrait_details } = await request.json();
+
+      if (portrait_score === undefined || !portrait_rating || !portrait_recommendation || !portrait_details) {
+        return jsonResponse({ error: 'Missing required portrait data fields.' }, 400);
+      }
+
+      const stmt = env.DB.prepare(
+        'UPDATE store_details SET portrait_score = ?, portrait_rating = ?, portrait_recommendation = ?, portrait_details = ? WHERE store_id = ?'
+      );
+      
+      await stmt.bind(
+        portrait_score,
+        portrait_rating,
+        portrait_recommendation,
+        JSON.stringify(portrait_details), // Always stringify JSON for storage
+        storeId
+      ).run();
+
+      return jsonResponse({ success: true, message: 'Portrait data saved.' });
+    } catch (e) {
+      console.error('Error saving portrait data:', e);
+      return jsonResponse({ error: 'Failed to save portrait data.', details: e.message }, 500);
+    }
+  }
+
+
   // Route: GET /api/store-details
   // Fetches store details from the database
   if (request.method === 'GET' && pathSegments[0] === 'store-details') {
