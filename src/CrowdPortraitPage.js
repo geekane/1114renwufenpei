@@ -193,12 +193,21 @@ const CrowdPortraitPage = () => {
                     setLoading(false);
                 } else if (res.status === 404) {
                     addLog("未找到缓存报告，开始实时分析...", "highlight");
-                    // Here, you should fetch the real address for the storeId
-                    // For now, we continue with a mock address.
-                    const keyRes = await fetch('/api/amap-key');
-                    const { apiKey } = await keyRes.json();
-                    const mockAddress = "成都卡密尔电竞馆"; // This should be dynamic
                     
+                    const keyRes = await fetch('/api/amap-key');
+                    if (!keyRes.ok) {
+                        throw new Error("无法从后端获取API密钥，请检查服务器配置。");
+                    }
+                    const { apiKey } = await keyRes.json();
+
+                    if (!apiKey) {
+                        throw new Error("从后端获取的API密钥为空，请在Cloudflare Pages中设置AMAP_KEY环境变量。");
+                    }
+
+                    // This should be dynamic in a real scenario
+                    const mockAddress = "成都卡密尔电竞馆";
+                    setAddress(mockAddress);
+
                     runAnalysis(apiKey, mockAddress);
                 } else {
                     throw new Error("获取报告时发生服务器错误");
