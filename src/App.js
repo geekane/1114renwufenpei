@@ -1,9 +1,12 @@
 import React, { useState, useEffect, useContext, useRef } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useParams, Navigate } from 'react-router-dom';
 import { Layout, Menu, Card, Table, Tag, Button, Space, Typography, Spin, Alert, Upload, message, Form, Input, Dropdown, Checkbox, Tooltip } from 'antd';
-import { MenuUnfoldOutlined, MenuFoldOutlined, UploadOutlined, PaperClipOutlined, FileTextOutlined, ShopOutlined, BarsOutlined, DownOutlined } from '@ant-design/icons';
+import { MenuUnfoldOutlined, MenuFoldOutlined, UploadOutlined, PaperClipOutlined, ShopOutlined, BarsOutlined, DownOutlined, LogoutOutlined } from '@ant-design/icons';
 import { projects, locations } from './mockData';
 import GanttChart from './GanttChart';
+import { AuthContext, AuthProvider } from './AuthContext';
+import PrivateRoute from './PrivateRoute';
+import LoginPage from './LoginPage';
 import { calculateROI, parseNumericValue } from './roiCalculator';
 import D1GanttPage from './D1GanttPage'; // Import the new page
 import CrowdPortraitPage from './CrowdPortraitPage'; // Import the crowd portrait page
@@ -526,6 +529,7 @@ const ProjectPage = () => {
 function App() {
   const [collapsed, setCollapsed] = useState(false);
   const [stores, setStores] = useState([]);
+  const { logout } = useContext(AuthContext);
 
   useEffect(() => {
     // Fetch store list for the menu
@@ -533,7 +537,6 @@ function App() {
       try {
         const response = await fetch('/api/store-details');
         if (!response.ok) {
-          // If response is not ok, we don't try to parse it as JSON
           throw new Error(`Failed to fetch stores: ${response.statusText}`);
         }
         const text = await response.text();
@@ -544,7 +547,6 @@ function App() {
           }
         } catch (e) {
           console.error("Failed to parse JSON for store list:", text);
-          // Don't throw here, just log it, so the rest of the app can render.
         }
       } catch (error) {
         console.error("Failed to fetch stores for menu:", error);
@@ -593,12 +595,17 @@ function App() {
         />
       </Sider>
       <Layout>
-        <Header style={{ background: '#fff', padding: 0, display: 'flex', alignItems: 'center' }}>
-            {React.createElement(collapsed ? MenuUnfoldOutlined : MenuFoldOutlined, {
-              className: 'trigger',
-              onClick: () => setCollapsed(!collapsed),
-            })}
-            <div style={{ fontSize: '18px', fontWeight: 'bold', marginLeft: '10px' }}>内部工作联通系统</div>
+        <Header style={{ background: '#fff', padding: '0 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{display: 'flex', alignItems: 'center'}}>
+              {React.createElement(collapsed ? MenuUnfoldOutlined : MenuFoldOutlined, {
+                className: 'trigger',
+                onClick: () => setCollapsed(!collapsed),
+              })}
+              <div style={{ fontSize: '18px', fontWeight: 'bold', marginLeft: '10px' }}>内部工作联通系统</div>
+            </div>
+            <Button icon={<LogoutOutlined />} onClick={logout}>
+              退出登录
+            </Button>
         </Header>
         
         {/* --- Content Area --- */}
@@ -626,7 +633,16 @@ function App() {
 // --- App Wrapper ---
 const AppWrapper = () => (
   <Router>
-    <App />
+    <AuthProvider>
+      <Routes>
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/*" element={
+          <PrivateRoute>
+            <App />
+          </PrivateRoute>
+        } />
+      </Routes>
+    </AuthProvider>
     <div id="live-demo-additional-container" style={{ position: 'fixed', top: 0, left: 0, zIndex: 10000 }} />
   </Router>
 );
