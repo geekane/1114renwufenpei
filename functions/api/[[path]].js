@@ -267,15 +267,64 @@ export async function onRequest(context) {
     }
   }
 
-  // Route: GET /api/amap-key
-  // Securely provides the AMap API key to the frontend
-  if (request.method === 'GET' && pathSegments[0] === 'amap-key') {
-    // Access the API key from the environment variable set in Cloudflare Pages settings.
-    const apiKey = env.AMAP_KEY;
-    if (!apiKey) {
-      return jsonResponse({ error: 'AMAP_KEY is not configured in server environment variables.' }, 500);
+  // Route: POST /api/amap/geocode
+  // Proxies geocoding requests to AMap to hide origin and key.
+  if (request.method === 'POST' && pathSegments[0] === 'amap' && pathSegments[1] === 'geocode') {
+    try {
+      const { address } = await request.json();
+      if (!address) {
+        return jsonResponse({ error: 'Address is required.' }, 400);
+      }
+      const apiKey = env.AMAP_KEY;
+      if (!apiKey) {
+        return jsonResponse({ error: 'AMAP_KEY not configured on server.' }, 500);
+      }
+      
+      const amapUrl = `https://restapi.amap.com/v3/geocode/geo?key=${apiKey}&address=${encodeURIComponent(address)}`;
+      const amapResponse = await fetch(amapUrl);
+      const amapData = await amapResponse.json();
+      
+      return jsonResponse(amapData);
+
+    } catch (e) {
+      return jsonResponse({ error: 'Failed to proxy geocode request.', details: e.message }, 500);
     }
-    return jsonResponse({ apiKey });
+  }
+
+  // Route: POST /api/amap/around
+  // Proxies place around search requests to AMap.
+  if (request.method === 'POST' && pathSegments[0] === 'amap' && pathSegments[1] === 'around') {
+    try {
+      const { location, radius, keywords, types } = await request.json();
+       if (!location) {
+        return jsonResponse({ error: 'Location is required.' }, 400);
+      }
+      const apiKey = env.AMAP_KEY;
+       if (!apiKey) {
+        return jsonResponse({ error: 'AMAP_KEY not configured on server.' }, 500);
+      }
+
+      const params = new URLSearchParams({
+        key: apiKey,
+        location,
+        radius: radius || 800,
+        offset: 20,
+        page: 1
+      });
+      // Only add these if they exist to avoid empty params
+      if (keywords) params.append('keywords', keywords);
+      if (types) params.append('types', types);
+      if (types === '050000') params.append('show_fields', 'business'); // only for food search
+
+      const amapUrl = `https://restapi.amap.com/v3/place/around?${params.toString()}`;
+      const amapResponse = await fetch(amapUrl);
+      const amapData = await amapResponse.json();
+
+      return jsonResponse(amapData);
+
+    } catch(e) {
+      return jsonResponse({ error: 'Failed to proxy place search request.', details: e.message }, 500);
+    }
   }
 
   // Route: GET /api/portrait/:storeId

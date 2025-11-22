@@ -1,7 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { useParams, Link } from 'react-router-dom';
-import { Spin, Alert, Card, Button } from 'antd';
-import { ArrowLeftOutlined } from '@ant-design/icons';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useParams } from 'react-router-dom';
+import { Spin, Alert, Card, Button, Input } from 'antd';
 import ReactECharts from 'echarts-for-react';
 import './StandalonePortraitPage.css'; // Reuse the same cool CSS
 
@@ -11,12 +10,10 @@ const CrowdPortraitPage = () => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
 
-    // Chart options
     const [gaugeOption, setGaugeOption] = useState({});
     const [radarOption, setRadarOption] = useState({});
     const [barOption, setBarOption] = useState({});
     
-    // UI display states
     const [grade, setGrade] = useState('--');
     const [suggestion, setSuggestion] = useState('加载中...');
     const [gradeColor, setGradeColor] = useState('var(--text-main)');
@@ -25,7 +22,6 @@ const CrowdPortraitPage = () => {
 
     const logConsoleRef = useRef(null);
 
-    // Same config as the standalone page
     const CONFIG = {
         positive: {
             "商场购物": {weight: 2.5, category: "核心客群", saturation: 5},
@@ -42,7 +38,6 @@ const CrowdPortraitPage = () => {
     
     const chartColors = { line: '#4cc9f0', area: 'rgba(76, 201, 240, 0.2)' };
 
-    // Add logs
     const addLog = (msg, type = '') => {
         const time = new Date().toLocaleTimeString([], { hour12: false });
         setLogs(prev => [...prev, { time, msg, type }]);
@@ -54,7 +49,15 @@ const CrowdPortraitPage = () => {
         }
     }, [logs]);
 
-    const updateUI = (totalScore, newScores, poiData, infraScore = 20, sugg, finalGrade, color) => {
+    const getGradeAndSuggestion = (totalScore, riskScore) => {
+        if (riskScore > 15) return { grade: "F", suggestion: "存在严重政策风险(学校)，一票否决", color: "#f87171" };
+        if (totalScore >= 150) return { grade: "S", suggestion: "顶级商圈，客流充沛，强烈推荐", color: "#4ade80" };
+        if (totalScore >= 110) return { grade: "A", suggestion: "核心区域，各项指标优秀", color: "#4cc9f0" };
+        if (totalScore >= 60) return { grade: "B", suggestion: "潜力区域，存在一定短板", color: "#facc15" };
+        return { grade: "D", suggestion: "缺乏核心支撑，风险较高", color: "#f87171" };
+    };
+    
+    const updateUI = useCallback((totalScore, newScores, poiData, infraScore = 20, sugg, finalGrade, color) => {
         let cleanScore = Math.max(0, totalScore);
 
         setGrade(finalGrade);
@@ -76,25 +79,29 @@ const CrowdPortraitPage = () => {
             xAxis: { data: poiData.map(i => i.name) },
             series: [{ data: poiData.map(i => i.count) }]
         });
-    };
-    
-    const getGradeAndSuggestion = (totalScore, riskScore) => {
-        let gradeVal = "D", color = "#f87171", suggVal = "缺乏核心支撑，风险较高";
-        if (riskScore > 15) { gradeVal = "F"; suggVal = "存在严重政策风险(学校)，一票否决"; color = "#f87171"; }
-        else if (totalScore >= 150) { gradeVal = "S"; suggVal = "顶级商圈，客流充沛，强烈推荐"; color = "#4ade80"; }
-        else if (totalScore >= 110) { gradeVal = "A"; suggVal = "核心区域，各项指标优秀"; color = "#4cc9f0"; }
-        else if (totalScore >= 60) { gradeVal = "B"; suggVal = "潜力区域，存在一定短板"; color = "#facc15"; }
-        return { grade: gradeVal, suggestion: suggVal, color: color };
-    };
-    
-    const runAnalysis = async (apiKey, targetAddress) => {
-        addLog(`开始分析: ${targetAddress}`, 'highlight');
-        setAddress(targetAddress);
+    }, []);
+
+    const handleRunAnalysis = useCallback(async (addressToAnalyze) => {
+        if (!addressToAnalyze) {
+            addLog("地址为空，无法分析。", "error");
+            setError("地址为空，无法分析。");
+            return;
+        }
+        addLog(`开始分析: ${addressToAnalyze}`, 'highlight');
+        setLoading(true);
+        setError(null);
+        setLogs(prev => [...prev.slice(0,1)]); // Clear previous logs except the first one
 
         try {
-            const geoRes = await fetch(`https://restapi.amap.com/v3/geocode/geo?key=${apiKey}&address=${targetAddress}`);
+            const geoRes = await fetch(`/api/amap/geocode`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ address: addressToAnalyze })
+            });
             const geoData = await geoRes.json();
-            if (geoData.status !== '1' || geoData.count === '0') throw new Error("地址无法解析");
+            if (geoData.status !== '1' || geoData.infocode !== '10000' || geoData.count === '0') {
+                 throw new Error(`地址解析失败: ${geoData.info || '未知错误'}`);
+            }
             
             const location = geoData.geocodes[0].location;
             addLog(`定位成功: ${location}`);
@@ -102,12 +109,16 @@ const CrowdPortraitPage = () => {
             let totalScore = 0;
             const newScores = { core: 0, biz: 0, comp: 0, risk: 0, cost: 0 };
             const poiCounts = [];
-            let infraScore = 15; // Default infrastructure score
+            let infraScore = 15;
 
             const promises = Object.entries(CONFIG.positive).map(async ([name, config]) => {
-                const searchRes = await fetch(`https://restapi.amap.com/v3/place/around?key=${apiKey}&location=${location}&radius=${config.radius || 800}&keywords=${name}&offset=20&page=1`);
+                const searchRes = await fetch(`/api/amap/around`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ location, radius: config.radius || 800, keywords: name })
+                });
                 const searchData = await searchRes.json();
-                let count = (searchData.status === '1') ? parseInt(searchData.count) : 0;
+                let count = (searchData.status === '1' && searchData.count) ? parseInt(searchData.count) : 0;
                 let impact = count > 0 ? (config.saturation ? config.saturation * (1 - Math.exp(-count / config.saturation)) : count) * config.weight : 0;
                 return { name, config, count, impact };
             });
@@ -131,12 +142,16 @@ const CrowdPortraitPage = () => {
             totalScore += infraScore;
 
             addLog("分析消费水平...");
-            const foodRes = await fetch(`https://restapi.amap.com/v3/place/around?key=${apiKey}&location=${location}&radius=800&types=050000&offset=20&show_fields=business`);
+            const foodRes = await fetch(`/api/amap/around`, {
+                 method: 'POST',
+                 headers: { 'Content-Type': 'application/json' },
+                 body: JSON.stringify({ location, types: '050000' })
+            });
             const foodData = await foodRes.json();
             let avgCost = 30, num = 0, total = 0;
             if (foodData.pois && foodData.pois.length > 0) {
                 foodData.pois.forEach(p => {
-                    if (p.biz_ext && p.biz_ext.cost) { total += parseFloat(p.biz_ext.cost); num++; }
+                    if (p.biz_ext && p.biz_ext.cost && parseFloat(p.biz_ext.cost) > 0) { total += parseFloat(p.biz_ext.cost); num++; }
                 });
                 if (num > 0) avgCost = total / num;
             }
@@ -156,7 +171,6 @@ const CrowdPortraitPage = () => {
             updateUI(totalScore, newScores, poiCounts, infraScore, suggestion, grade, color);
             addLog(`分析完成，总分: ${totalScore.toFixed(1)}`, 'success');
 
-            // Save to DB
             await fetch(`/api/portrait/${storeId}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -170,9 +184,17 @@ const CrowdPortraitPage = () => {
         } finally {
             setLoading(false);
         }
-    };
+    }, [storeId, updateUI]);
 
     useEffect(() => {
+        const getInitialGaugeOption = () => ({ series: [{ type: 'gauge', startAngle: 90, endAngle: -270, min: 0, max: 200, pointer: { show: false }, progress: { show: true, overlap: false, roundCap: true, clip: false, itemStyle: { color: chartColors.line } }, axisLine: { lineStyle: { width: 8, color: [[1, '#2a2a2a']] } }, splitLine: { show: false }, axisTick: { show: false }, axisLabel: { show: false }, detail: { fontSize: 28, offsetCenter: [0, '0%'], valueAnimation: true, formatter: '{value}', color: '#fff', fontWeight: 'bold' }, data: [{ value: 0 }] }] });
+        const getInitialRadarOption = () => ({ radar: { indicator: [ { name: '核心客流', max: 100 }, { name: '商业协同', max: 80 }, { name: '基础设施', max: 80 }, { name: '竞争环境', max: 80 }, { name: '消费匹配', max: 60 } ], radius: '65%', splitNumber: 4, axisName: { color: chartColors.text, fontSize: 11 }, splitLine: { lineStyle: { color: '#2a2a2a' } }, splitArea: { show: false }, axisLine: { lineStyle: { color: '#2a2a2a' } } }, series: [] });
+        const getInitialBarOption = () => ({ grid: { top: 10, bottom: 20, left: 30, right: 10 }, tooltip: { trigger: 'axis', backgroundColor: 'rgba(0,0,0,0.8)', borderColor: '#333', textStyle: {color: '#fff'} }, xAxis: { type: 'category', data: [], axisLabel: { color: chartColors.text, fontSize: 10, interval:0 }, axisLine: { show: false }, axisTick: { show: false } }, yAxis: { type: 'value', splitLine: { lineStyle: { color: '#2a2a2a', type: 'dashed' } }, axisLabel: { color: chartColors.text } }, series: [{ type: 'bar', barWidth: '40%', itemStyle: { color: chartColors.line, borderRadius: [2, 2, 0, 0] }, data: [] }] });
+
+        setRadarOption(getInitialRadarOption());
+        setGaugeOption(getInitialGaugeOption());
+        setBarOption(getInitialBarOption());
+        
         const fetchData = async () => {
             if (!storeId) {
                 setError("无效的门店ID");
@@ -193,22 +215,9 @@ const CrowdPortraitPage = () => {
                     setLoading(false);
                 } else if (res.status === 404) {
                     addLog("未找到缓存报告，开始实时分析...", "highlight");
-                    
-                    const keyRes = await fetch('/api/amap-key');
-                    if (!keyRes.ok) {
-                        throw new Error("无法从后端获取API密钥，请检查服务器配置。");
-                    }
-                    const { apiKey } = await keyRes.json();
-
-                    if (!apiKey) {
-                        throw new Error("从后端获取的API密钥为空，请在Cloudflare Pages中设置AMAP_KEY环境变量。");
-                    }
-
-                    // This should be dynamic in a real scenario
-                    const mockAddress = "成都卡密尔电竞馆";
-                    setAddress(mockAddress);
-
-                    runAnalysis(apiKey, mockAddress);
+                    const initialAddress = "成都卡密尔电竞馆";
+                    setAddress(initialAddress);
+                    handleRunAnalysis(initialAddress);
                 } else {
                     throw new Error("获取报告时发生服务器错误");
                 }
@@ -220,91 +229,52 @@ const CrowdPortraitPage = () => {
         };
 
         fetchData();
-    }, [storeId]);
-    
-    // Initial chart options
-    useEffect(() => {
-        const initialRadar = getInitialRadarOption();
-        setRadarOption(initialRadar);
-        setGaugeOption(getInitialGaugeOption());
-        setBarOption(getInitialBarOption());
-    },[]);
+    }, [storeId, handleRunAnalysis, updateUI]);
 
-    const getInitialGaugeOption = () => ({
-        series: [{
-            type: 'gauge', startAngle: 90, endAngle: -270, min: 0, max: 200,
-            pointer: { show: false },
-            progress: { show: true, overlap: false, roundCap: true, clip: false, itemStyle: { color: chartColors.line } },
-            axisLine: { lineStyle: { width: 8, color: [[1, '#2a2a2a']] } },
-            splitLine: { show: false }, axisTick: { show: false }, axisLabel: { show: false },
-            detail: { fontSize: 28, offsetCenter: [0, '0%'], valueAnimation: true, formatter: '{value}', color: '#fff', fontWeight: 'bold' },
-            data: [{ value: 0 }]
-        }]
-    });
-
-    const getInitialRadarOption = () => ({
-        radar: {
-            indicator: [
-                { name: '核心客流', max: 100 }, { name: '商业协同', max: 80 }, { name: '基础设施', max: 80 },
-                { name: '竞争环境', max: 80 }, { name: '消费匹配', max: 60 }
-            ],
-            radius: '65%', splitNumber: 4,
-            axisName: { color: chartColors.text, fontSize: 11 },
-            splitLine: { lineStyle: { color: '#2a2a2a' } },
-            splitArea: { show: false }, axisLine: { lineStyle: { color: '#2a2a2a' } }
-        },
-        series: []
-    });
-
-    const getInitialBarOption = () => ({
-        grid: { top: 10, bottom: 20, left: 30, right: 10 },
-        tooltip: { trigger: 'axis', backgroundColor: 'rgba(0,0,0,0.8)', borderColor: '#333', textStyle: {color: '#fff'} },
-        xAxis: { type: 'category', data: [], axisLabel: { color: chartColors.text, fontSize: 10, interval:0 }, axisLine: { show: false }, axisTick: { show: false } },
-        yAxis: { type: 'value', splitLine: { lineStyle: { color: '#2a2a2a', type: 'dashed' } }, axisLabel: { color: chartColors.text } },
-        series: [{ type: 'bar', barWidth: '40%', itemStyle: { color: chartColors.line, borderRadius: [2, 2, 0, 0] }, data: [] }]
-    });
-
-    // This is the same UI structure as StandalonePortraitPage
     return (
         <div className="dashboard-container">
             <header className="dashboard-header">
-                <h1>门店画像报告: {storeId} <span>V11.2</span></h1>
+                <h1>门店画像报告: {storeId} <span>V11.4</span></h1>
                 <div className="controls">
-                    <Button type="primary" onClick={() => { /* re-running analysis can be implemented here */ }}>重新分析</Button>
+                    <Input.Search
+                        value={address}
+                        onChange={e => setAddress(e.target.value)}
+                        placeholder="输入精确地址或地标进行分析"
+                        enterButton="重新分析"
+                        onSearch={() => handleRunAnalysis(address)}
+                        style={{ width: 400 }}
+                        loading={loading}
+                    />
                 </div>
             </header>
 
-            <Spin spinning={loading} size="large" fullscreen tip="正在生成报告..." />
-
-            {!loading && (
-                 <div className="dashboard-grid">
-                    <div className="dashboard-card area-log">
-                        <div className="card-title">分析日志</div>
-                        <div className="log-window" ref={logConsoleRef}>
-                            {logs.map((log, i) => (
-                                <div key={i} className={`log-entry ${log.type}`}><span className="time">{log.time}</span>{log.msg}</div>
-                            ))}
-                        </div>
+            <div className="dashboard-grid">
+                <div className="dashboard-card area-log">
+                    <div className="card-title">分析日志</div>
+                    <div className="log-window" ref={logConsoleRef}>
+                        {logs.map((log, i) => (
+                            <div key={i} className={`log-entry ${log.type}`}><span className="time">{log.time}</span>{log.msg}</div>
+                        ))}
                     </div>
-                    <div className="dashboard-card area-score">
-                        <div className="score-wrapper"><ReactECharts option={gaugeOption} style={{ width: 220, height: 220 }} /></div>
-                        <div className="info-wrapper">
-                            <div className="card-title">评估结果</div>
-                            <div><span className="grade-big" style={{ color: gradeColor }}>{grade}</span></div>
-                            <div className="suggestion-box" style={{ borderLeftColor: gradeColor }}>{suggestion}</div>
-                            <div style={{ marginTop: 20, width: '100%' }}>
-                                <div className="score-item"><span className="label">核心客群</span><span className="val" style={{color:'var(--primary)'}}>{scores.core.toFixed(1)}</span></div>
-                                <div className="score-item"><span className="label">商业协同</span><span className="val" style={{color:'var(--accent)'}}>{scores.biz.toFixed(1)}</span></div>
-                                <div className="score-item"><span className="label">竞争压力</span><span className="val" style={{color:'var(--danger)'}}>{scores.comp.toFixed(1)}</span></div>
-                                <div className="score-item"><span className="label">消费画像</span><span className="val" style={{color:'var(--warning)'}}>{scores.cost > 0 ? `+${scores.cost}` : scores.cost}</span></div>
-                            </div>
-                        </div>
-                    </div>
-                    <div className="dashboard-card area-radar"><div className="card-title">五维模型</div><ReactECharts option={radarOption} style={{height: '100%'}} /></div>
-                    <div className="dashboard-card area-details"><div className="card-title">业态分布</div><ReactECharts option={barOption} style={{height: '100%'}} /></div>
                 </div>
-            )}
-            {error && <Alert message="错误" description={error} type="error" showIcon style={{marginTop: 20}}/>}
+                <div className="dashboard-card area-score">
+                    <div className="score-wrapper"><ReactECharts option={gaugeOption} style={{ width: 220, height: 220 }} /></div>
+                    <div className="info-wrapper">
+                        <div className="card-title">评估结果</div>
+                        <div><span className="grade-big" style={{ color: gradeColor }}>{grade}</span></div>
+                        <div className="suggestion-box" style={{ borderLeftColor: gradeColor }}>{suggestion}</div>
+                        <div style={{ marginTop: 20, width: '100%' }}>
+                            <div className="score-item"><span className="label">核心客群</span><span className="val" style={{color:'var(--primary)'}}>{scores.core.toFixed(1)}</span></div>
+                            <div className="score-item"><span className="label">商业协同</span><span className="val" style={{color:'var(--accent)'}}>{scores.biz.toFixed(1)}</span></div>
+                            <div className="score-item"><span className="label">竞争压力</span><span className="val" style={{color:'var(--danger)'}}>{scores.comp.toFixed(1)}</span></div>
+                            <div className="score-item"><span className="label">消费画像</span><span className="val" style={{color:'var(--warning)'}}>{scores.cost > 0 ? `+${scores.cost}` : scores.cost}</span></div>
+                        </div>
+                    </div>
+                </div>
+                <div className="dashboard-card area-radar"><div className="card-title">五维模型</div><ReactECharts option={radarOption} style={{height: '100%'}} /></div>
+                <div className="dashboard-card area-details"><div className="card-title">业态分布</div><ReactECharts option={barOption} style={{height: '100%'}} /></div>
+            </div>
+            {error && !loading && <Alert message="分析出错" description={error} type="error" showIcon style={{marginTop: 20}}/>}
         </div>
     );
 };
