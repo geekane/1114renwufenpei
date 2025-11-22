@@ -131,6 +131,7 @@ const EditableCell = ({
 
 // --- New Store Details Page (修复版) ---
 const StoreDetailsPage = () => {
+  const [modal, contextHolder] = Modal.useModal();
   const [storeDetails, setStoreDetails] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -193,7 +194,7 @@ const StoreDetailsPage = () => {
           }
 
           const handleDocDelete = (docToDelete) => {
-            Modal.confirm({
+            modal.confirm({
               title: '您确定要删除这个文件吗?',
               icon: <ExclamationCircleFilled />,
               content: `文件名: ${docToDelete.name}`,
@@ -478,9 +479,10 @@ const StoreDetailsPage = () => {
   });
 
   return (
-    <Card
-      title="门店详情列表"
-      extra={
+    <>
+      <Card
+        title="门店详情列表"
+        extra={
         <Space>
           <Dropdown menu={{
               items: [
@@ -523,6 +525,8 @@ const StoreDetailsPage = () => {
         />
       </Spin>
     </Card>
+    {contextHolder}
+    </>
   );
 };
 // --- Project Detail Page (with ViewMode switcher) ---
