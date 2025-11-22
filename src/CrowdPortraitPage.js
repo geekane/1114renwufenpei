@@ -160,15 +160,21 @@ const CrowdPortraitPage = () => {
             totalScore += costBonus;
             
             const { grade, suggestion, color } = getGradeAndSuggestion(totalScore, newScores.risk);
+
+            // Format scores before saving to DB to match DECIMAL(10, 2)
+            const formattedScores = Object.entries(newScores).reduce((acc, [key, value]) => {
+                acc[key] = parseFloat(value.toFixed(2));
+                return acc;
+            }, {});
             
             const finalResult = {
-                portrait_score: totalScore,
+                portrait_score: parseFloat(totalScore.toFixed(2)),
                 portrait_rating: grade,
                 portrait_recommendation: suggestion,
-                portrait_details: { scores: newScores, poi: poiCounts, infra: infraScore }
+                portrait_details: { scores: formattedScores, poi: poiCounts, infra: infraScore }
             };
 
-            updateUI(totalScore, newScores, poiCounts, infraScore, suggestion, grade, color);
+            updateUI(totalScore, formattedScores, poiCounts, infraScore, suggestion, grade, color);
             addLog(`分析完成，总分: ${totalScore.toFixed(1)}`, 'success');
 
             await fetch(`/api/portrait/${storeId}`, {
