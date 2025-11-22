@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useContext, useRef } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useParams, Navigate } from 'react-router-dom';
-import { Layout, Menu, Card, Table, Tag, Button, Space, Typography, Spin, Alert, Upload, message, Form, Input, Dropdown, Checkbox, Tooltip } from 'antd';
-import { MenuUnfoldOutlined, MenuFoldOutlined, UploadOutlined, PaperClipOutlined, ShopOutlined, BarsOutlined, DownOutlined, LogoutOutlined } from '@ant-design/icons';
+import { Layout, Menu, Card, Table, Tag, Button, Space, Typography, Spin, Alert, Upload, message, Form, Input, Dropdown, Checkbox, Tooltip, Modal } from 'antd';
+import { MenuUnfoldOutlined, MenuFoldOutlined, UploadOutlined, PaperClipOutlined, ShopOutlined, BarsOutlined, DownOutlined, LogoutOutlined, ExclamationCircleFilled } from '@ant-design/icons';
 import { projects, locations } from './mockData';
 import GanttChart from './GanttChart';
 import { AuthContext, AuthProvider } from './AuthContext';
@@ -192,20 +192,30 @@ const StoreDetailsPage = () => {
             return <span style={{ color: '#ccc' }}>暂无</span>;
           }
 
-          const handleDocDelete = async (docToDelete) => {
-            try {
-              setLoading(true);
-              const res = await fetch(`/api/file/${docToDelete.key}`, { method: 'DELETE' });
-              if (!res.ok) throw new Error('Delete failed');
-
-              const updatedDocs = documents.filter(doc => doc.key !== docToDelete.key);
-              handleSave({ ...record, related_documents: updatedDocs });
-              message.success('删除成功');
-            } catch (err) {
-              message.error('删除失败');
-            } finally {
-              setLoading(false);
-            }
+          const handleDocDelete = (docToDelete) => {
+            Modal.confirm({
+              title: '您确定要删除这个文件吗?',
+              icon: <ExclamationCircleFilled />,
+              content: `文件名: ${docToDelete.name}`,
+              okText: '确认删除',
+              okType: 'danger',
+              cancelText: '取消',
+              onOk: async () => {
+                try {
+                  setLoading(true);
+                  const res = await fetch(`/api/file/${docToDelete.key}`, { method: 'DELETE' });
+                  if (!res.ok) throw new Error('Delete failed');
+    
+                  const updatedDocs = documents.filter(doc => doc.key !== docToDelete.key);
+                  handleSave({ ...record, related_documents: updatedDocs });
+                  message.success('删除成功');
+                } catch (err) {
+                  message.error('删除失败');
+                } finally {
+                  setLoading(false);
+                }
+              },
+            });
           };
 
           const handleDocRename = (docToRename, newName) => {
@@ -240,6 +250,17 @@ const StoreDetailsPage = () => {
             </Space>
           )
         }
+      },
+      {
+        title: '快捷操作',
+        key: 'actions',
+        width: 120,
+        fixed: 'right',
+        render: (_, record) => (
+          <Link to={`/crowd-portrait/${record.store_id}`}>
+            <Button type="link">人群画像分析</Button>
+          </Link>
+        ),
       },
       { title: '详细地址', dataIndex: 'detailed_address', key: 'detailed_address', width: 250, editable: true },
       { title: '所处区域', dataIndex: 'district', key: 'district', width: 100, editable: true, sorter: (a, b) => (a.district || '').length - (b.district || '').length },
