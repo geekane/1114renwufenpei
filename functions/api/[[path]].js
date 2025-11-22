@@ -270,10 +270,11 @@ export async function onRequest(context) {
   // Route: GET /api/amap-key
   // Securely provides the AMap API key to the frontend
   if (request.method === 'GET' && pathSegments[0] === 'amap-key') {
-    // It's recommended to store secrets in Cloudflare Pages environment variables
-    // and access them via env.AMAP_KEY. For this example, we'll use a hardcoded key
-    // as per the instructions, but this is not best practice.
-    const apiKey = "cfed97bf5c90224abbbb2ede4c008d0b";
+    // Access the API key from the environment variable set in Cloudflare Pages settings.
+    const apiKey = env.AMAP_KEY;
+    if (!apiKey) {
+      return jsonResponse({ error: 'AMAP_KEY is not configured in server environment variables.' }, 500);
+    }
     return jsonResponse({ apiKey });
   }
 
