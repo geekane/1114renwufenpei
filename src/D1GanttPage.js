@@ -65,33 +65,22 @@ function createPopup({ date, content }, position, callback) {
 // Helper for API calls to the backend
 const apiCall = async (endpoint, method = 'POST', body) => {
     try {
-        const config = {
+        const response = await fetch(`/api/${endpoint}`, {
             method,
             headers: {
                 'Content-Type': 'application/json',
             },
-        };
-        // Only add body if it's not a GET or DELETE request and body is provided
-        if (body && (method === 'POST' || method === 'PATCH')) {
-            config.body = JSON.stringify(body);
-        }
-
-        const response = await fetch(`/api/${endpoint}`, config);
-        
+            body: JSON.stringify(body),
+        });
         if (!response.ok) {
-            const errorData = await response.json().catch(() => ({ error: 'Invalid JSON response from server' }));
+            const errorData = await response.json();
+            // Use a more specific error message if available
             throw new Error(errorData.details || errorData.error || `Network response was not ok: ${response.statusText}`);
         }
-
-        // For some successful responses (like DELETE), there might not be a body.
-        if (response.status === 204 || (response.headers.get('content-length') || '0') === '0') {
-            return { success: true };
-        }
-        
         return await response.json();
     } catch (error) {
         console.error(`ERROR: API call to /api/${endpoint} failed.`, error);
-        message.error(`操作失败: ${error.message}`);
+        alert(`操作失败: ${error.message}`);
         return { success: false, error }; // Indicate failure
     }
 };
@@ -157,6 +146,7 @@ const GanttChart = () => {
     const { storeId } = useParams(); // Get storeId from URL
     const containerRef = useRef(null);
     const instanceRef = useRef(null);
+    const isUpdatingExternally = useRef(false);
     const [records, setRecords] = useState([]);
     const [markLines, setMarkLines] = useState([]);
     const [timeScale, setTimeScale] = useState('day');
@@ -215,42 +205,7 @@ const GanttChart = () => {
             const columns = [
                 { field: 'title', title: '任务', width: 150, editor: 'input-editor', tree: true },
                 { field: 'start', title: '开始时间', width: 120, editor: 'date-editor' },
-                { field: 'end', title: '结束时间', width: 120, editor: 'date-editor' },
-                {
-                    field: 'actions',
-                    title: '操作',
-                    width: 80,
-                    cellType: 'custom',
-                    customLayout: (args) => {
-                        const { height, width } = args.rect;
-                        return {
-                            rootContainer: new VTableGantt.VRender.Group({
-                                x: args.rect.x,
-                                y: args.rect.y,
-                                width,
-                                height,
-                                display: 'flex',
-                                flexDirection: 'row',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                children: [
-                                   {
-                                        symbolType: 'delete',
-                                        size: 16,
-                                        cursor: 'pointer',
-                                        fill: '#E65555',
-                                        hover: {
-                                            fill: '#F5222D',
-                                            scale: 1.2
-                                        },
-                                        x: width/2,
-                                        y: height/2
-                                   }
-                                ],
-                            })
-                        };
-                    }
-                }
+                { field: 'end', title: '结束时间', width: 120, editor: 'date-editor' }
             ];
 
             const simplePlusIcon = '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" fill=""/></svg>';
@@ -318,7 +273,7 @@ const GanttChart = () => {
             const ganttInstance = new VTableGantt.Gantt(containerRef.current, option);
             instanceRef.current = ganttInstance;
 
-            const handleCellEdit = async (args) => {
+            const handleCellEdit = (args) => {
                 const { col, row, field, value } = args;
                 const record = instanceRef.current.getRecordByCell(col, row);
 
@@ -334,31 +289,23 @@ const GanttChart = () => {
                 }
 
                 const changedData = { [field]: formattedValue };
-                console.log(`EVENT: User edited cell. Task ID: ${id}. Attempting to save...`, changedData);
-                
-                const result = await apiCall(`task/${id}`, 'PATCH', { changedData, storeId });
+                console.log(`EVENT: User edited cell. Task ID: ${id}. Staging changes.`, changedData);
 
-                if (result.success) {
-                    message.success('任务已更新');
-                    // Update React state after successful API call
-                    setRecords(currentRecords => {
-                        const updateNode = (nodes) => {
-                            return nodes.map(node => {
-                                if (node.id === id) {
-                                    return { ...node, ...changedData };
-                                }
-                                if (node.sub) {
-                                    return { ...node, sub: updateNode(node.sub) };
-                                }
-                                return node;
-                            });
-                        };
-                        return updateNode(currentRecords);
-                    });
-                } else {
-                    message.error('更新失败，请刷新后重试');
-                    fetchData(); // Revert changes on failure
-                }
+                // Update React state directly, don't call API yet.
+                setRecords(currentRecords => {
+                    const updateNode = (nodes) => {
+                        return nodes.map(node => {
+                            if (node.id === id) {
+                                return { ...node, ...changedData };
+                            }
+                            if (node.sub) {
+                                return { ...node, sub: updateNode(node.sub) };
+                            }
+                            return node;
+                        });
+                    };
+                    return updateNode(currentRecords);
+                });
             };
             
             const handleMarkLineCreate = ({ data, position }) => {
@@ -401,59 +348,26 @@ const GanttChart = () => {
                 });
             };
 
-            const handleTaskChange = async (args) => {
-                const { originRecord, changedData } = args;
-                 if (!originRecord || !originRecord.id || !changedData || (!changedData.start && !changedData.end)) {
-                    console.warn('Task change ignored: missing data.', { originRecord, changedData });
+            const handleTaskChange = (args) => {
+                if (isUpdatingExternally.current) {
+                    console.log("INFO: Ignoring `change_task` event from external update.");
+                    requestAnimationFrame(() => {
+                        isUpdatingExternally.current = false;
+                    });
                     return;
                 }
-                
-                const updatePayload = {};
-                if (changedData.start) updatePayload.start = formatDate(new Date(changedData.start));
-                if (changedData.end) updatePayload.end = formatDate(new Date(changedData.end));
-                
-                console.log(`EVENT: Task drag/resize. Task ID: ${originRecord.id}. Attempting to save...`, updatePayload);
-                const result = await apiCall(`task/${originRecord.id}`, 'PATCH', { changedData: updatePayload, storeId });
+                const { records: newRecords } = args;
 
-                if (result.success) {
-                    message.success('任务时间已更新');
-                    setRecords(prevRecords =>
-                        prevRecords.map(record =>
-                            record.id === originRecord.id ? { ...record, ...updatePayload } : record
-                        )
-                    );
-                } else {
-                     message.error('更新失败，正在恢复...');
-                     fetchData(); // Revert change by refetching
-                }
-            };
-
-            const handleCellClick = ({ col, row }) => {
-                const field = instanceRef.current?.getHeaderField(col, row);
-                if (field === 'actions') {
-                    const record = instanceRef.current.getRecordByCell(col, row);
-                    if (record && record.id) {
-                        // Use Popconfirm for better UX if possible, otherwise window.confirm
-                        if (window.confirm(`确定要删除任务 "${record.title}" 吗？此操作不可撤销。`)) {
-                            handleDeleteTask(record.id);
-                        }
-                    }
-                }
-            };
-
-            const handleDeleteTask = async (taskId) => {
-                const result = await apiCall(`task/${taskId}/${storeId}`, 'DELETE');
-                if (result.success) {
-                    message.success('任务已删除');
-                    setRecords(prev => prev.filter(rec => rec.id !== taskId));
-                }
+                // Instead of diffing and calling the API, just update the state
+                // and mark that there are unsaved changes.
+                console.log("EVENT: `change_task` (drag/resize) fired. Staging changes.");
+                setRecords(newRecords);
             };
     
             ganttInstance.on('click_markline_create', handleMarkLineCreate);
             ganttInstance.on('click_markline_content', handleMarkLineClick);
             ganttInstance.on('change_task', handleTaskChange);
-            ganttInstance.on('after_edit_cell', handleCellEdit);
-            ganttInstance.on('click_cell', handleCellClick);
+            ganttInstance.on('after_edit_cell', handleCellEdit); // Register the new handler
         }
 
         return () => {
@@ -494,22 +408,23 @@ const GanttChart = () => {
         fetchData(); // 直接调用封装好的函数
     };
 
-    const handleAddTask = async () => {
-        const today = new Date();
-        const endDate = new Date();
-        endDate.setDate(today.getDate() + 2);
-
-        const newTaskStub = {
-            title: '新任务（请编辑）',
-            start: formatDate(today),
-            end: formatDate(endDate),
-        };
-
-        const result = await apiCall('task/add', 'POST', { task: newTaskStub, storeId });
-
-        if (result.success && result.task) {
-            message.success('新任务已添加');
-            setRecords(prev => [...prev, result.task]);
+    // 4. 定义保存更改的处理函数
+    const handleSaveChanges = async () => {
+        setIsLoading(true);
+        try {
+            console.log("User clicked save changes button. Sending data to API...", records);
+            const result = await apiCall('tasks', 'POST', { records, storeId });
+            
+            if (result.success) {
+                message.success('更改已成功保存');
+            } else {
+                message.error('保存失败: ' + (result.error?.message || '未知错误'));
+            }
+        } catch (error) {
+            console.error('保存更改时发生错误:', error);
+            message.error('保存失败: ' + error.message);
+        } finally {
+            setIsLoading(false);
         }
     };
 
@@ -524,14 +439,49 @@ const GanttChart = () => {
                 </Space>
                 
                 <Space>
-                    <Button type="primary" onClick={handleAddTask} disabled={isLoading}>
-                        新增任务
-                    </Button>
                     <Link to={`/crowd-portrait/${storeId}`}>
                         <Button>人群画像分析</Button>
                     </Link>
-                    <Button onClick={handleRefresh} disabled={isLoading}>
-                        {isLoading ? '正在同步...' : '刷新同步数据'}
+                    <Button
+                        onClick={handleRefresh}
+                        disabled={isLoading}
+                    >
+                        {isLoading ? '正在刷新...' : '刷新同步数据'}
+                    </Button>
+                    <Button
+                        onClick={async () => {
+                            const newTask = {
+                                title: "新任务",
+                                start: formatDate(new Date()),
+                                end: formatDate(new Date(new Date().setDate(new Date().getDate() + 1))),
+                                progress: 0
+                            };
+                            setIsLoading(true);
+                            try {
+                                const result = await apiCall('task/add', 'POST', { task: newTask, storeId });
+                                if (result.success) {
+                                    message.success('任务添加成功');
+                                    setRecords(prev => [...prev, result.task]);
+                                } else {
+                                    message.error('添加失败: ' + (result.error || '未知错误'));
+                                }
+                            } catch (e) {
+                                message.error('添加失败: ' + e.message);
+                            } finally {
+                                setIsLoading(false);
+                            }
+                        }}
+                        disabled={isLoading}
+                    >
+                        新增任务
+                    </Button>
+                    <Button
+                        type="primary"
+                        onClick={handleSaveChanges}
+                        disabled={isLoading}
+                        loading={isLoading}
+                    >
+                        {isLoading ? '正在保存...' : '保存更改到云端'}
                     </Button>
                 </Space>
             </div>
