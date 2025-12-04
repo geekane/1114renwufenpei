@@ -224,7 +224,7 @@ const GanttChart = () => {
                     customLayout: (args) => {
                         const { height, width } = args.rect;
                         return {
-                            rootContainer: new VTableGantt.VRender.Group({
+                            rootContainer: new VTable.VRender.Group({
                                 x: args.rect.x,
                                 y: args.rect.y,
                                 width,
