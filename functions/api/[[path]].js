@@ -92,34 +92,86 @@ export async function onRequest(context) {
     }
   }
 
-  // Route: POST /api/task
-  // Updates a single task for a specific store
-  if (request.method === 'POST' && pathSegments[0] === 'task') {
+  // Route: POST /api/task/add
+  // Adds a new task for a specific store
+  if (request.method === 'POST' && pathSegments[0] === 'task' && pathSegments[1] === 'add') {
     try {
-      const { id, changedData, storeId } = await request.json();
-      if (!id || !changedData || !storeId) {
-        return jsonResponse({ error: 'Missing id, changedData, or storeId' }, 400);
+      const { task, storeId } = await request.json();
+      if (!task || !storeId) {
+        return jsonResponse({ error: 'Invalid data format, expected { task: {}, storeId: "..." }' }, 400);
       }
 
-      // Build the SET part of the SQL query dynamically
+      // Generate a unique ID for the new task
+      const newId = crypto.randomUUID();
+      const newTask = {
+        id: newId,
+        title: task.title || '新任务',
+        start: task.start,
+        end: task.end,
+        progress: task.progress || 0,
+        avatar: task.avatar || 'https://lf9-dp-fe-cms-tos.byteorg.com/obj/bit-cloud/VTable/custom-render/question.jpeg',
+        store_id: storeId
+      };
+
+      const stmt = env.DB.prepare(
+        'INSERT INTO gantt_tasks (id, title, start, end, progress, avatar, store_id) VALUES (?, ?, ?, ?, ?, ?, ?)'
+      );
+      await stmt.bind(newTask.id, newTask.title, newTask.start, newTask.end, newTask.progress, newTask.avatar, newTask.store_id).run();
+
+      return jsonResponse({ success: true, task: newTask });
+
+    } catch (e) {
+      console.error('Error adding task to D1:', e);
+      return jsonResponse({ error: 'Failed to add task.', details: e.message }, 500);
+    }
+  }
+
+  // Route: DELETE /api/task/:taskId/:storeId
+  // Deletes a single task
+  if (request.method === 'DELETE' && pathSegments[0] === 'task' && pathSegments[1] && pathSegments[2]) {
+    try {
+      const taskId = pathSegments[1];
+      const storeId = pathSegments[2];
+      
+      const stmt = env.DB.prepare('DELETE FROM gantt_tasks WHERE id = ? AND store_id = ?');
+      const result = await stmt.bind(taskId, storeId).run();
+
+      if (result.changes > 0) {
+        return jsonResponse({ success: true, message: `Task ${taskId} deleted.` });
+      } else {
+        return jsonResponse({ success: false, message: 'Task not found or not deleted.' }, 404);
+      }
+
+    } catch (e) {
+      console.error('Error deleting task from D1:', e);
+      return jsonResponse({ error: 'Failed to delete task.', details: e.message }, 500);
+    }
+  }
+  
+  // Route: PATCH /api/task/:taskId
+  // Updates a single task for a specific store
+  if (request.method === 'PATCH' && pathSegments[0] === 'task' && pathSegments[1]) {
+    try {
+      const taskId = pathSegments[1];
+      const { changedData, storeId } = await request.json();
+      if (!changedData || !storeId) {
+        return jsonResponse({ error: 'Missing changedData or storeId' }, 400);
+      }
+
       const fields = Object.keys(changedData);
       const values = Object.values(changedData);
       const setClause = fields.map(field => `${field} = ?`).join(', ');
 
       const stmt = env.DB.prepare(`UPDATE gantt_tasks SET ${setClause} WHERE id = ? AND store_id = ?`);
-      await stmt.bind(...values, id, storeId).run();
+      await stmt.bind(...values, taskId, storeId).run();
 
       return jsonResponse({ success: true });
     } catch (e) {
       console.error('Error updating task:', e);
-      return jsonResponse({
-        error: 'Failed to update task.',
-        details: e.message,
-        stack: e.stack,
-      }, 500);
+      return jsonResponse({ error: 'Failed to update task.', details: e.message }, 500);
     }
   }
-  
+
   // Route: POST /api/markline
   // Creates or updates a markline for a specific store (UPSERT)
   if (request.method === 'POST' && pathSegments[0] === 'markline') {
