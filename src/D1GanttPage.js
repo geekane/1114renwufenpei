@@ -7,20 +7,26 @@ import * as VTable from '@visactor/vtable';
 import * as VTableGantt from '@visactor/vtable-gantt';
 import { DateInputEditor, InputEditor } from '@visactor/vtable-editors';
 
+// --- 辅助函数 ---
+
 function formatDate(date) {
-    const year = date.getFullYear();
-    const month = ('0' + (date.getMonth() + 1)).slice(-2);
-    const day = ('0' + date.getDate()).slice(-2);
+    if (!date) return '';
+    const d = new Date(date);
+    if (isNaN(d.getTime())) return '';
+    const year = d.getFullYear();
+    const month = ('0' + (d.getMonth() + 1)).slice(-2);
+    const day = ('0' + d.getDate()).slice(-2);
     return year + '-' + month + '-' + day;
 }
 
-// --- 颜色配置逻辑 ---
+// 1. 根据进度返回基础颜色配置
 function getProgressColorConfig(progress) {
   // 智能解析：处理 "18%"、"0.18"、18 等不同格式
   let p = parseFloat(progress);
   if (isNaN(p)) p = 0;
 
-  // 如果数据是小数 (0.5)，且业务逻辑认为这是 50%，则乘以100
+  // 假设：如果数据是 0-1 之间的小数(如 0.5)，且业务逻辑认为这是 50%，则乘以100
+  // 如果你的业务允许 0.5% 这种极小进度，请移除此判断
   if (p > 0 && p <= 1) {
       p = p * 100;
   }
@@ -36,9 +42,9 @@ function getProgressColorConfig(progress) {
   }
 }
 
-// --- 综合获取颜色：结合完成状态 ---
+// 2. 综合获取颜色：结合“是否勾选完成”的状态
 function getTaskColor(record) {
-    // VTable 前端使用的是 boolean，但数据库可能是 1/0，这里统一处理
+    // 数据库可能存的是 1/0，前端可能是 true/false，这里做宽容判断
     const isDone = record.is_completed === true || record.is_completed === 1;
     
     if (isDone || parseFloat(record.progress) >= 100) {
@@ -47,6 +53,7 @@ function getTaskColor(record) {
     return getProgressColorConfig(record.progress);
 }
 
+// 里程碑弹窗逻辑
 function createPopup({ date, content }, position, callback) {
     let container = document.getElementById('live-demo-additional-container');
     if (!container) {
@@ -62,20 +69,21 @@ function createPopup({ date, content }, position, callback) {
     }
     
     const existingPopup = container.querySelector('.popup');
-    if (existingPopup) {
-        existingPopup.remove();
-    }
+    if (existingPopup) existingPopup.remove();
+
     const popup = document.createElement('div');
     popup.className = 'popup';
-    popup.style.top = `${position.top}px`;
-    popup.style.left = `${position.left}px`;
-    popup.style.position = 'absolute';
-    popup.style.zIndex = '1000';
-    popup.style.background = 'white';
-    popup.style.border = '1px solid #ccc';
-    popup.style.padding = '10px';
-    popup.style.boxShadow = '0 2px 10px rgba(0,0,0,0.1)';
-    popup.style.pointerEvents = 'auto';
+    Object.assign(popup.style, {
+        top: `${position.top}px`,
+        left: `${position.left}px`,
+        position: 'absolute',
+        zIndex: '1000',
+        background: 'white',
+        border: '1px solid #ccc',
+        padding: '10px',
+        boxShadow: '0 2px 10px rgba(0,0,0,0.1)',
+        pointerEvents: 'auto'
+    });
 
     const dateString = typeof date === 'string' ? date : formatDate(date);
     popup.innerHTML = `
@@ -88,14 +96,13 @@ function createPopup({ date, content }, position, callback) {
     popup.querySelector('.confirm-btn').onclick = () => {
         const inputValue = popup.querySelector('.popup-input').value;
         popup.remove();
-        if (typeof callback === 'function') {
-            callback(inputValue);
-        }
+        if (typeof callback === 'function') callback(inputValue);
     };
     container.appendChild(popup);
     popup.querySelector('.popup-input').focus();
 }
 
+// API请求封装
 const apiCall = async (endpoint, method = 'POST', body) => {
     try {
         const response = await fetch(`/api/${endpoint}`, {
@@ -110,43 +117,70 @@ const apiCall = async (endpoint, method = 'POST', body) => {
         return await response.json();
     } catch (error) {
         console.error(`API Error /api/${endpoint}:`, error);
-        alert(`操作失败: ${error.message}`);
         return { success: false, error };
     }
 };
 
-const getScalesConfig = (scaleType) => {
-    // ... (Scale config code identical to your original, omitted for brevity but should be here)
-    // For completeness, a simple version:
-    return [{ unit: 'day', step: 1, format: d => d.dateIndex.toString(), style: { fontSize: 12 } }];
+const getChineseWeekday = (date) => {
+    const day = new Date(date).getDay();
+    const weekdays = ['日', '一', '二', '三', '四', '五', '六'];
+    return `周${weekdays[day]}`;
 };
+
+const getScalesConfig = (scaleType) => {
+    switch (scaleType) {
+        case 'week':
+            return [
+                { unit: 'month', step: 1, format: (c) => `${c.startDate.getFullYear()}年 ${c.startDate.getMonth() + 1}月`, style: { textStick: true, fontSize: 14, fontWeight: 'bold', color: '#333' } },
+                { unit: 'week', step: 1, format: (c) => `第${c.dateIndex}周`, style: { fontSize: 12, color: '#666' } }
+            ];
+        case 'month':
+            return [
+                { unit: 'year', step: 1, format: (c) => `${c.startDate.getFullYear()}年`, style: { textStick: true, fontSize: 16, fontWeight: 'bold', color: '#333' } },
+                { unit: 'month', step: 1, format: (c) => `${c.startDate.getMonth() + 1}月`, style: { fontSize: 14, color: '#555' } }
+            ];
+        case 'day':
+        default:
+            return [
+                { unit: 'month', step: 1, format: (c) => `${c.startDate.getFullYear()}年 ${c.startDate.getMonth() + 1}月`, style: { textStick: true, fontSize: 14, fontWeight: 'bold', color: '#333', textAlign: 'center' } },
+                { unit: 'day', step: 1, format: (date) => `${date.dateIndex}\n${getChineseWeekday(date.startDate)}`, style: { textAlign: 'center', lineHeight: 20, fontSize: 12 } }
+            ];
+    }
+};
+
+// --- 主组件 ---
 
 const GanttChart = () => {
     const { storeId } = useParams();
     const containerRef = useRef(null);
     const instanceRef = useRef(null);
     const isUpdatingExternally = useRef(false);
+    
+    // State
     const [records, setRecords] = useState([]);
     const [markLines, setMarkLines] = useState([]);
     const [timeScale, setTimeScale] = useState('day');
     const [isLoading, setIsLoading] = useState(false);
     const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0, record: null });
 
-    // 1. Fetch data
+    // 1. Fetch Data
     const fetchData = async () => {
         if (!storeId) return;
         setIsLoading(true);
+        console.log(`Fetching data for store: ${storeId}`);
         try {
             const response = await fetch(`/api/data/${storeId}`);
             if (!response.ok) throw new Error(response.statusText);
             const data = await response.json();
 
             if (Array.isArray(data.records)) {
-                // 【关键修复】递归处理数据，将 0/1 转换为 false/true
+                // 【核心修复】将后端返回的 0/1 转换为 false/true
                 const processRecords = (nodes) => {
                     return nodes.map(node => {
                         const boolCompleted = node.is_completed === 1 || node.is_completed === true;
+                        // 递归处理子节点
                         const children = node.children ? processRecords(node.children) : undefined;
+                        
                         return {
                             ...node,
                             is_completed: boolCompleted, // 强制转为 Boolean
@@ -158,38 +192,45 @@ const GanttChart = () => {
             } else {
                 setRecords([]);
             }
+
             if (Array.isArray(data.markLines)) {
                 setMarkLines(data.markLines);
+            } else {
+                setMarkLines([]);
             }
         } catch (error) {
-            console.error('Fetch Error:', error);
+            console.error('Data Load Error:', error);
+            message.error("数据加载失败");
         } finally {
             setIsLoading(false);
         }
     };
 
+    // Initial Fetch
     useEffect(() => {
         fetchData();
     }, [storeId]);
 
-    // Close menu
+    // Close Context Menu
     useEffect(() => {
         const handleClick = () => setContextMenu({ visible: false, x: 0, y: 0, record: null });
         window.addEventListener('click', handleClick);
         return () => window.removeEventListener('click', handleClick);
     }, []);
 
-    // Initialize Gantt
+    // Initialize Gantt Instance
     useEffect(() => {
         if (containerRef.current && !instanceRef.current) {
-            console.log("Initializing Gantt...");
+            console.log("Initializing Gantt Instance...");
+            
+            // Register Editors
             const inputEditor = new InputEditor();
             VTable.register.editor('input-editor', inputEditor);
             const dateEditor = new DateInputEditor();
             VTable.register.editor('date-editor', dateEditor);
 
             const columns = [
-                // 【新增】完成状态勾选列
+                // 【新增】完成状态勾选列 (Checkbox)
                 {
                     field: 'is_completed',
                     title: '✓',
@@ -197,25 +238,27 @@ const GanttChart = () => {
                     cellType: 'checkbox',
                     style: { textAlign: 'center' }
                 },
-                { field: 'title', title: '任务', width: 150, editor: 'input-editor', tree: true },
-                { field: 'start', title: '开始时间', width: 120, editor: 'date-editor' },
-                { field: 'end', title: '结束时间', width: 120, editor: 'date-editor' }
+                { field: 'title', title: '任务', width: 200, editor: 'input-editor', tree: true },
+                { field: 'start', title: '开始时间', width: 100, editor: 'date-editor' },
+                { field: 'end', title: '结束时间', width: 100, editor: 'date-editor' }
             ];
 
+            const simplePlusIcon = '<svg viewBox="0 0 24 24" ...><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" fill=""/></svg>';
             const today = new Date();
             const maxDate = new Date();
             maxDate.setMonth(today.getMonth() + 2);
-            
-            const simplePlusIcon = '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" fill=""/></svg>';
 
             const option = {
-                records,
-                markLine: markLines,
+                records: [], // 初始为空，由 useEffect 同步
+                markLine: [],
                 taskListTable: {
                     columns,
                     tableWidth: 'auto',
-                    minTableWidth: 350, // 增加宽度适应多列
-                    theme: { headerStyle: { borderColor: '#e1e4e8', borderLineWidth: 0, fontSize: 18, fontWeight: 'bold', 'color': 'red' }, bodyStyle: { borderColor: '#e1e4e8', borderLineWidth: 0, fontSize: 16, color: '#4D4D4D', bgColor: '#FFF' } },
+                    minTableWidth: 350,
+                    theme: { 
+                        headerStyle: { borderColor: '#e1e4e8', borderLineWidth: 0, fontSize: 18, fontWeight: 'bold', 'color': 'red' }, 
+                        bodyStyle: { borderColor: '#e1e4e8', borderLineWidth: 0, fontSize: 16, color: '#4D4D4D', bgColor: '#FFF' } 
+                    },
                     hierarchyIndent: 25,
                     hierarchyExpandLevel: 2,
                 },
@@ -235,18 +278,18 @@ const GanttChart = () => {
                     labelText: '{title} ({progress}%)',
                     labelTextStyle: { fontFamily: 'Arial, sans-serif', fontSize: 14, textAlign: 'left', color: '#24292f' },
                     barStyle: {
-                      width: 50, // 高度设置为 50
+                      width: 50, // 【修改】高度加大
                       cornerRadius: 6,
                       borderWidth: 1,
                       borderColor: '#e5e7eb',
                 
-                      // 底色：根据 is_completed 和 progress
+                      // 【修改】动态底色
                       barColor: (args) => {
                         const record = args.taskRecord || args; 
                         return getTaskColor(record).bg;
                       },
                       
-                      // 完成色：根据 is_completed 和 progress
+                      // 【修改】动态完成色
                       completedBarColor: (args) => {
                         const record = args.taskRecord || args;
                         return getTaskColor(record).main;
@@ -257,7 +300,7 @@ const GanttChart = () => {
                 timelineHeader: {
                     backgroundColor: '#f0f0fb',
                     colWidth: 80,
-                    scales: getScalesConfig(timeScale) // Ensure getScalesConfig is defined in file
+                    scales: getScalesConfig(timeScale)
                 },
                 minDate: formatDate(today),
                 maxDate: formatDate(maxDate),
@@ -269,15 +312,16 @@ const GanttChart = () => {
             const ganttInstance = new VTableGantt.Gantt(containerRef.current, option);
             instanceRef.current = ganttInstance;
 
-            // --- Event Listeners ---
-            
-            // 监听 Checkbox 变化
+            // --- 事件监听 ---
+
+            // 1. 监听 Checkbox 勾选
             ganttInstance.on('checkbox_state_change', (args) => {
                 const { col, row, checked } = args;
                 const record = instanceRef.current.getRecordByCell(col, row);
                 
                 if (record) {
-                    // Update React state
+                    console.log(`Checkbox changed for task ${record.id}: ${checked}`);
+                    // 递归更新 State
                     setRecords(prev => {
                         const updateRecursive = (nodes) => {
                             return nodes.map(node => {
@@ -285,11 +329,12 @@ const GanttChart = () => {
                                     return { 
                                         ...node, 
                                         is_completed: checked, // 保持 Boolean
-                                        // 可选：勾选后自动100%
-                                        progress: checked ? 100 : node.progress 
+                                        progress: checked ? 100 : node.progress // 勾选自动100%
                                     };
                                 }
-                                if (node.children) return { ...node, children: updateRecursive(node.children) };
+                                if (node.children) {
+                                    return { ...node, children: updateRecursive(node.children) };
+                                }
                                 return node;
                             });
                         };
@@ -298,13 +343,17 @@ const GanttChart = () => {
                 }
             });
 
+            // 2. 监听单元格编辑
             const handleCellEdit = (args) => {
                 const { col, row, field, value } = args;
                 const record = instanceRef.current.getRecordByCell(col, row);
                 if (!record || !record.id || !field) return;
 
-                const changedData = { [field]: value };
-                if (field === 'start' || field === 'end') changedData[field] = formatDate(new Date(value));
+                let formattedValue = value;
+                if ((field === 'start' || field === 'end') && value) {
+                    formattedValue = formatDate(new Date(value));
+                }
+                const changedData = { [field]: formattedValue };
 
                 setRecords(currentRecords => {
                     const updateNode = (nodes) => {
@@ -318,33 +367,70 @@ const GanttChart = () => {
                 });
             };
 
+            // 3. 监听任务条拖拽/调整
             const handleTaskChange = (args) => {
                 if (isUpdatingExternally.current) {
                     requestAnimationFrame(() => isUpdatingExternally.current = false);
                     return;
                 }
+                // VTable 返回的是更新后的 flat 或 tree 结构，这里直接更新状态
                 setRecords(args.records);
             };
+            
+            // 4. 里程碑交互
+            const handleMarkLineCreate = ({ data, position }) => {
+                createPopup({ date: data.startDate, content: '' }, position, async value => {
+                  const newMarkLine = {
+                    date: formatDate(data.startDate),
+                    content: value || '新建里程碑',
+                    store_id: storeId,
+                    contentStyle: { color: '#fff' },
+                    style: { lineWidth: 1, lineColor: 'red' }
+                  };
+                  const result = await apiCall('markline', 'POST', newMarkLine);
+                  if (result.success) setMarkLines(prev => [...prev, newMarkLine]);
+                });
+            };
+      
+            const handleMarkLineClick = ({ data, position }) => {
+                createPopup({ date: data.date, content: data.content }, position, async value => {
+                  const updatedMarkLine = { ...data, content: value || data.content, store_id: storeId };
+                  const result = await apiCall('markline', 'POST', updatedMarkLine);
+                  if(result.success) {
+                    setMarkLines(prev => prev.map(line => line.date === data.date ? { ...line, content: value } : line));
+                  }
+                });
+            };
 
-            // Other events
+            // 5. 右键菜单
+            const handleContextMenu = (args) => {
+                args.event.preventDefault();
+                const record = instanceRef.current.getRecordByCell(args.col, args.row);
+                if (record) {
+                    setContextMenu({ visible: true, x: args.event.clientX, y: args.event.clientY, record: record });
+                }
+            };
+
             ganttInstance.on('click_markline_create', handleMarkLineCreate);
             ganttInstance.on('click_markline_content', handleMarkLineClick);
             ganttInstance.on('change_task', handleTaskChange);
-            ganttInstance.on('after_edit_cell', handleCellEdit);
+            ganttInstance.on('after_edit_cell', handleCellEdit); 
             ganttInstance.on('contextmenu_cell', handleContextMenu);
         }
 
         return () => {
             if (instanceRef.current) {
+                console.log("Releasing Gantt Instance.");
                 instanceRef.current.release();
                 instanceRef.current = null;
             }
         };
-    }, []); 
+    }, []); // Only run once on mount
 
-    // Sync Effects
+    // --- 同步 State 到 Gantt ---
+
     useEffect(() => {
-        if (instanceRef.current && records.length > 0) {
+        if (instanceRef.current) {
             instanceRef.current.setRecords(records);
         }
     }, [records]);
@@ -361,16 +447,21 @@ const GanttChart = () => {
         }
     }, [timeScale]);
 
-    // Handlers
+
+    // --- 按钮操作 ---
+
     const handleRefresh = () => fetchData();
-    
+
     const handleSaveChanges = async () => {
         setIsLoading(true);
         try {
-            // Send boolean records to backend; backend converts true->1, false->0
+            console.log("Saving records:", records);
             const result = await apiCall('tasks', 'POST', { records, storeId });
-            if (result.success) message.success('更改已成功保存');
-            else message.error('保存失败: ' + result.error?.message);
+            if (result.success) {
+                message.success('更改已成功保存');
+            } else {
+                message.error('保存失败: ' + (result.error?.message || '未知错误'));
+            }
         } catch (error) {
             message.error('保存失败: ' + error.message);
         } finally {
@@ -392,35 +483,36 @@ const GanttChart = () => {
             const result = await apiCall('task/add', 'POST', { task: newTask, storeId });
             if (result.success) {
                 message.success('任务添加成功');
-                await fetchData();
+                await fetchData(); 
             } else {
                 message.error('添加失败');
             }
         } catch (e) {
-            message.error(e.message);
+            message.error('添加失败: ' + e.message);
         } finally {
             setIsLoading(false);
-            setContextMenu({ visible: false, x: 0, y: 0, record: null });
+            if (contextMenu.visible) setContextMenu({ visible: false, x: 0, y: 0, record: null });
         }
-    };
-
-    // Helper stubs for context menu logic
-    const handleMarkLineCreate = ({ data, position }) => { /* ...existing logic... */ };
-    const handleMarkLineClick = ({ data, position }) => { /* ...existing logic... */ };
-    const handleContextMenu = (args) => {
-        args.event.preventDefault();
-        const record = instanceRef.current.getRecordByCell(args.col, args.row);
-        if (record) setContextMenu({ visible: true, x: args.event.clientX, y: args.event.clientY, record });
     };
 
     return (
         <div style={{ height: '100%', width: '100%', display: 'flex', flexDirection: 'column', position: 'relative' }}>
-             {/* Context Menu */}
-             {contextMenu.visible && (
-                <div style={{ position: 'absolute', top: contextMenu.y, left: contextMenu.x, background: 'white', border: '1px solid #ccc', zIndex: 1001, padding: '5px 0' }}>
-                    <div style={{ padding: '8px 15px', cursor: 'pointer' }} onClick={() => handleAddTask(contextMenu.record.id)}>新增子任务</div>
+            {/* 右键菜单 DOM */}
+            {contextMenu.visible && (
+                <div 
+                    style={{
+                        position: 'absolute', top: contextMenu.y, left: contextMenu.x,
+                        background: 'white', border: '1px solid #ccc', borderRadius: '4px',
+                        boxShadow: '0 2px 10px rgba(0,0,0,0.2)', zIndex: 1001, padding: '5px 0'
+                    }}
+                >
+                    <div style={{ padding: '8px 15px', cursor: 'pointer' }} onClick={() => handleAddTask(contextMenu.record.id)}>
+                        新增子任务
+                    </div>
                 </div>
             )}
+            
+            {/* 顶部工具栏 */}
             <div style={{ padding: '10px', borderBottom: '1px solid #eee', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <Space>
                     <span>时间粒度：</span>
@@ -428,13 +520,18 @@ const GanttChart = () => {
                     <Button type={timeScale === 'week' ? 'primary' : 'default'} onClick={() => setTimeScale('week')}>周</Button>
                     <Button type={timeScale === 'month' ? 'primary' : 'default'} onClick={() => setTimeScale('month')}>月</Button>
                 </Space>
+                
                 <Space>
                     <Link to={`/crowd-portrait/${storeId}`}><Button>人群画像分析</Button></Link>
-                    <Button onClick={handleRefresh} disabled={isLoading}>刷新同步数据</Button>
+                    <Button onClick={handleRefresh} disabled={isLoading}>{isLoading ? '正在刷新...' : '刷新同步数据'}</Button>
                     <Button onClick={() => handleAddTask(null)} disabled={isLoading}>新增任务</Button>
-                    <Button type="primary" onClick={handleSaveChanges} disabled={isLoading} loading={isLoading}>保存更改到云端</Button>
+                    <Button type="primary" onClick={handleSaveChanges} disabled={isLoading} loading={isLoading}>
+                        {isLoading ? '正在保存...' : '保存更改到云端'}
+                    </Button>
                 </Space>
             </div>
+            
+            {/* 甘特图容器 */}
             <div ref={containerRef} style={{ flex: 1, width: '100%' }} />
         </div>
     );
