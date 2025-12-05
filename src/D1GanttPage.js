@@ -13,6 +13,25 @@ function formatDate(date) {
     return year + '-' + month + '-' + day;
 }
 
+// 根据进度返回颜色配置
+// 0-29%: 红色 (滞后/刚开始)
+// 30-59%: 橙色 (进行中)
+// 60-99%: 蓝色 (良好)
+// 100%: 绿色 (完成)
+function getProgressColorConfig(progress) {
+  const p = Number(progress) || 0;
+  
+  if (p >= 100) {
+    return { main: '#10b981', bg: '#d1fae5' }; // Green
+  } else if (p >= 60) {
+    return { main: '#3b82f6', bg: '#dbeafe' }; // Blue
+  } else if (p >= 30) {
+    return { main: '#f97316', bg: '#ffedd5' }; // Orange
+  } else {
+    return { main: '#ef4444', bg: '#fee2e2' }; // Red
+  }
+}
+
 function createPopup({ date, content }, position, callback) {
     let container = document.getElementById('live-demo-additional-container');
     if (!container) {
@@ -202,26 +221,6 @@ const GanttChart = () => {
     useEffect(() => {
         if (containerRef.current && !instanceRef.current) {
             console.log("EVENT: Component mounted. INITIALIZING Gantt Chart instance...");
-            
-            // 根据进度获取对应的渐变色组合
-            const getProgressColors = (progress) => {
-                const p = Number(progress || 0);
-                
-                // 1. 完成 (100%): 绿色系
-                if (p >= 100) {
-                    return { light: '#b3d9b3', dark: '#2ca02c' };
-                }
-                // 2. 推进良好 (60% - 99%): 蓝色系
-                if (p >= 60) {
-                    return { light: '#aecde6', dark: '#1f77b4' };
-                }
-                // 3. 有进展 (30% - 59%): 橙色系
-                if (p >= 30) {
-                    return { light: '#ffb582', dark: '#ff7f0e' };
-                }
-                // 4. 起步/滞后 (0% - 29%): 红色/粉色系
-                return { light: '#e59a9c', dark: '#d62728' };
-            };
 
             const inputEditor = new InputEditor();
             VTable.register.editor('input-editor', inputEditor);
@@ -268,61 +267,36 @@ const GanttChart = () => {
                 headerRowHeight: 80,
                 rowHeight: 80,
                 taskBar: {
-                  startDateField: 'start', endDateField: 'end', progressField: 'progress', barStyle: { width: 60 },
-                  draggable: true,
-                  resizable: true,
-                  customLayout: args => {
-                    const { width, height, taskRecord } = args; // 不需要 index 了
-        
-                    // 1. 【核心修改】根据当前任务的 progress 获取颜色
-                    const colors = getProgressColors(taskRecord.progress);
-            
-                    // 2. 使用获取到的 colors.light 和 colors.dark 构建渐变
-                    const container = new VTableGantt.VRender.Group({
-                        width,
-                        height,
-                        cornerRadius: 30,
-                        fill: {
-                            gradient: 'linear',
-                            x0: 0, y0: 0, x1: 1, y1: 0,
-                            stops: [
-                                { offset: 0, color: colors.light },   // 浅色
-                                { offset: 0.5, color: colors.dark },  // 深色
-                                { offset: 1, color: colors.light }    // 浅色
-                            ]
-                        },
-                        display: 'flex',
-                        flexDirection: 'row',
-                        flexWrap: 'nowrap'
-                    });
-            
-                    // ... 下面的代码保持不变 (头像、文字等) ...
-                    const containerLeft = new VTableGantt.VRender.Group({ height, width: 60, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'space-around' });
-                    container.add(containerLeft);
-                    
-                    // 这里的 avatar 如果没有值，建议给一个默认图，防止报错
-                    const avatarUrl = taskRecord.avatar || 'https://lf9-dp-fe-cms-tos.byteorg.com/obj/bit-cloud/VTable/custom-render/question.jpeg';
-                    const avatar = new VTableGantt.VRender.Image({ width: 50, height: 50, image: avatarUrl, cornerRadius: 25 });
-                    containerLeft.add(avatar);
-            
-                    const containerCenter = new VTableGantt.VRender.Group({ height, width: width - (width >= 120 ? 120 : 60), display: 'flex', flexDirection: 'column' });
-                    container.add(containerCenter);
-                    
-                    const titleText = new VTableGantt.VRender.Text({ text: taskRecord.title, fontSize: 16, fontFamily: 'sans-serif', fill: 'white', fontWeight: 'bold', maxLineWidth: width - (width >= 120 ? 120 : 60), boundsPadding: [10, 0, 0, 0] });
-                    containerCenter.add(titleText);
-                    
-                    const days = new VTableGantt.VRender.Text({ text: `${args.taskDays}天`, fontSize: 13, fontFamily: 'sans-serif', fill: 'white', boundsPadding: [10, 0, 0, 0] });
-                    containerCenter.add(days);
-            
-                    if (width >= 120) {
-                        const containerRight = new VTableGantt.VRender.Group({ cornerRadius: 20, fill: 'white', height: 40, width: 40, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', boundsPadding: [10, 0, 0, 0] });
-                        container.add(containerRight);
-                        const progressText = new VTableGantt.VRender.Text({ text: `${taskRecord.progress || 0}%`, fontSize: 12, fontFamily: 'sans-serif', fill: 'black', alignSelf: 'center', fontWeight: 'bold', maxLineWidth: (width - 60) / 2, boundsPadding: [0, 0, 0, 0] });
-                        containerRight.add(progressText);
-                    }
-                    return { rootContainer: container };
-                  },
-                  hoverBarStyle: { cornerRadius: 30 }
+                    selectable: true,
+                    startDateField: 'start',
+                    endDateField: 'end',
+                    progressField: 'progress',
+                    labelText: '{title} ({progress}%)',
+                    labelTextStyle: {
+                      fontFamily: 'Arial, sans-serif',
+                      fontSize: 12,
+                      textAlign: 'left',
+                      color: '#24292f'
+                    },
+                    barStyle: {
+                      width: 24,
+                      cornerRadius: 6,
+                      borderWidth: 1,
+                      borderColor: '#e5e7eb',
+                
+                      // 1. 设置未完成部分的底色 (bg)
+                      barColor: (args) => {
+                        const progress = args.taskRecord.progress;
+                        return getProgressColorConfig(progress).bg;
+                      },
+                      
+                      // 2. 设置已完成部分的颜色 (main)
+                      completedBarColor: (args) => {
+                        const progress = args.taskRecord.progress;
+                        return getProgressColorConfig(progress).main;
+                      }
+                    },
+                    progressAdjustable: true
                 },
                 timelineHeader: {
                     backgroundColor: '#f0f0fb',
