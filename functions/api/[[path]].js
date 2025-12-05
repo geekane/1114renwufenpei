@@ -162,11 +162,7 @@ export async function onRequest(context) {
       );
       await stmt.bind(newTask.id, newTask.title, newTask.start, newTask.end, newTask.progress, newTask.avatar, newTask.store_id, newTask.parent_id).run();
 
-      // Return the task without the parent_id if it's a root, or with it if it's a child.
-      // For a new root task, the frontend doesn't need parent_id.
-      const { parent_id, ...taskForClient } = newTask;
-
-      return jsonResponse({ success: true, task: taskForClient });
+      return jsonResponse({ success: true, task: newTask });
 
     } catch (e) {
       console.error('Error adding task to D1:', e);
