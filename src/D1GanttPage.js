@@ -19,40 +19,6 @@ function formatDate(date) {
     return year + '-' + month + '-' + day;
 }
 
-// 1. 根据进度返回基础颜色配置
-function getProgressColorConfig(progress) {
-  // 智能解析：处理 "18%"、"0.18"、18 等不同格式
-  let p = parseFloat(progress);
-  if (isNaN(p)) p = 0;
-
-  // 假设：如果数据是 0-1 之间的小数(如 0.5)，且业务逻辑认为这是 50%，则乘以100
-  // 如果你的业务允许 0.5% 这种极小进度，请移除此判断
-  if (p > 0 && p <= 1) {
-      p = p * 100;
-  }
-
-  if (p >= 100) {
-    return { main: '#10b981', bg: '#d1fae5' }; // 绿色 (完成)
-  } else if (p >= 60) {
-    return { main: '#3b82f6', bg: '#dbeafe' }; // 蓝色 (良好)
-  } else if (p >= 30) {
-    return { main: '#f97316', bg: '#ffedd5' }; // 橙色 (进行中)
-  } else {
-    return { main: '#ef4444', bg: '#fee2e2' }; // 红色 (滞后/刚开始)
-  }
-}
-
-// 2. 综合获取颜色：结合“是否勾选完成”的状态
-function getTaskColor(record) {
-    // 数据库可能存的是 1/0，前端可能是 true/false，这里做宽容判断
-    const isDone = record.is_completed === true || record.is_completed === 1;
-    
-    if (isDone || parseFloat(record.progress) >= 100) {
-       return { main: '#059669', bg: '#A7F3D0' }; // 墨绿色 (已完成)
-    }
-    return getProgressColorConfig(record.progress);
-}
-
 // 里程碑弹窗逻辑
 function createPopup({ date, content }, position, callback) {
     let container = document.getElementById('live-demo-additional-container');
@@ -121,33 +87,6 @@ const apiCall = async (endpoint, method = 'POST', body) => {
     }
 };
 
-const getChineseWeekday = (date) => {
-    const day = new Date(date).getDay();
-    const weekdays = ['日', '一', '二', '三', '四', '五', '六'];
-    return `周${weekdays[day]}`;
-};
-
-const getScalesConfig = (scaleType) => {
-    switch (scaleType) {
-        case 'week':
-            return [
-                { unit: 'month', step: 1, format: (c) => `${c.startDate.getFullYear()}年 ${c.startDate.getMonth() + 1}月`, style: { textStick: true, fontSize: 14, fontWeight: 'bold', color: '#333' } },
-                { unit: 'week', step: 1, format: (c) => `第${c.dateIndex}周`, style: { fontSize: 12, color: '#666' } }
-            ];
-        case 'month':
-            return [
-                { unit: 'year', step: 1, format: (c) => `${c.startDate.getFullYear()}年`, style: { textStick: true, fontSize: 16, fontWeight: 'bold', color: '#333' } },
-                { unit: 'month', step: 1, format: (c) => `${c.startDate.getMonth() + 1}月`, style: { fontSize: 14, color: '#555' } }
-            ];
-        case 'day':
-        default:
-            return [
-                { unit: 'month', step: 1, format: (c) => `${c.startDate.getFullYear()}年 ${c.startDate.getMonth() + 1}月`, style: { textStick: true, fontSize: 14, fontWeight: 'bold', color: '#333', textAlign: 'center' } },
-                { unit: 'day', step: 1, format: (date) => `${date.dateIndex}\n${getChineseWeekday(date.startDate)}`, style: { textAlign: 'center', lineHeight: 20, fontSize: 12 } }
-            ];
-    }
-};
-
 // --- 主组件 ---
 
 const GanttChart = () => {
@@ -159,7 +98,6 @@ const GanttChart = () => {
     // State
     const [records, setRecords] = useState([]);
     const [markLines, setMarkLines] = useState([]);
-    const [timeScale, setTimeScale] = useState('day');
     const [isLoading, setIsLoading] = useState(false);
     const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0, record: null });
 
@@ -174,16 +112,14 @@ const GanttChart = () => {
             const data = await response.json();
 
             if (Array.isArray(data.records)) {
-                // 【核心修复】将后端返回的 0/1 转换为 false/true
+                // 将后端返回的 0/1 转换为 false/true，防止 VTable 崩溃
                 const processRecords = (nodes) => {
                     return nodes.map(node => {
                         const boolCompleted = node.is_completed === 1 || node.is_completed === true;
-                        // 递归处理子节点
                         const children = node.children ? processRecords(node.children) : undefined;
-                        
                         return {
                             ...node,
-                            is_completed: boolCompleted, // 强制转为 Boolean
+                            is_completed: boolCompleted, 
                             children: children
                         };
                     });
@@ -221,7 +157,7 @@ const GanttChart = () => {
     // Initialize Gantt Instance
     useEffect(() => {
         if (containerRef.current && !instanceRef.current) {
-            console.log("Initializing Gantt Instance...");
+            console.log("Initializing Gantt Instance with simple theme...");
             
             // Register Editors
             const inputEditor = new InputEditor();
@@ -229,8 +165,9 @@ const GanttChart = () => {
             const dateEditor = new DateInputEditor();
             VTable.register.editor('date-editor', dateEditor);
 
+            // Columns 配置 (结合了您的新样式和我们的业务字段)
             const columns = [
-                // 【新增】完成状态勾选列 (Checkbox)
+                // 1. 完成状态勾选列
                 {
                     field: 'is_completed',
                     title: '✓',
@@ -238,75 +175,155 @@ const GanttChart = () => {
                     cellType: 'checkbox',
                     style: { textAlign: 'center' }
                 },
-                { field: 'title', title: '任务', width: 200, editor: 'input-editor', tree: true },
-                { field: 'start', title: '开始时间', width: 100, editor: 'date-editor' },
-                { field: 'end', title: '结束时间', width: 100, editor: 'date-editor' }
+                // 2. 任务名称
+                {
+                    field: 'title',
+                    title: '任务名称',
+                    width: 200,
+                    sort: true,
+                    tree: true,
+                    editor: 'input-editor'
+                },
+                // 3. 开始日期
+                {
+                    field: 'start',
+                    title: '开始日期',
+                    width: 100,
+                    sort: true,
+                    editor: 'date-editor'
+                },
+                // 4. 结束日期
+                {
+                    field: 'end',
+                    title: '结束日期',
+                    width: 100,
+                    sort: true,
+                    editor: 'date-editor'
+                },
+                // 5. 进度
+                {
+                    field: 'progress',
+                    title: '进度',
+                    width: 80,
+                    sort: true,
+                    headerStyle: { borderColor: '#e1e4e8' },
+                    style: { borderColor: '#e1e4e8', color: 'green' }
+                }
             ];
 
-            const simplePlusIcon = '<svg viewBox="0 0 24 24" ...><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" fill=""/></svg>';
             const today = new Date();
             const maxDate = new Date();
             maxDate.setMonth(today.getMonth() + 2);
 
+            // --- 核心配置：使用您提供的简洁样式 ---
             const option = {
-                records: [], // 初始为空，由 useEffect 同步
+                records: [], 
                 markLine: [],
                 taskListTable: {
-                    columns,
-                    tableWidth: 'auto',
+                    columns: columns,
+                    tableWidth: 'auto', // 自适应
                     minTableWidth: 350,
-                    theme: { 
-                        headerStyle: { borderColor: '#e1e4e8', borderLineWidth: 0, fontSize: 18, fontWeight: 'bold', 'color': 'red' }, 
-                        bodyStyle: { borderColor: '#e1e4e8', borderLineWidth: 0, fontSize: 16, color: '#4D4D4D', bgColor: '#FFF' } 
-                    },
-                    hierarchyIndent: 25,
-                    hierarchyExpandLevel: 2,
+                    maxTableWidth: 800
                 },
+                tasksShowMode: 'tasks_separate',
+                
+                // 样式：灰色边框风格
                 frame: {
-                  outerFrameStyle: { borderLineWidth: 0, borderColor: 'red', cornerRadius: 8 },
-                  verticalSplitLine: { lineColor: '#d5d9ee', lineWidth: 2, visible: true },
-                  verticalSplitLineHighlight: { lineColor: '#1677ff', lineWidth: 3, visible: true }
+                    verticalSplitLineMoveable: true,
+                    outerFrameStyle: {
+                        borderLineWidth: 1,
+                        borderColor: '#e5e7eb',
+                        cornerRadius: 8
+                    },
+                    verticalSplitLine: {
+                        lineWidth: 2,
+                        lineColor: '#d1d5db'
+                    },
+                    verticalSplitLineHighlight: {
+                        lineColor: '#3b82f6',
+                        lineWidth: 2
+                    }
                 },
-                grid: { backgroundColor: '#f0f0fb', horizontalLine: { lineWidth: 2, lineColor: '#d5d9ee' } },
-                headerRowHeight: 80,
-                rowHeight: 80,
+                grid: {
+                    verticalLine: {
+                        lineWidth: 1,
+                        lineColor: '#f3f4f6'
+                    },
+                    horizontalLine: {
+                        lineWidth: 1,
+                        lineColor: '#f3f4f6'
+                    }
+                },
+                
+                // 尺寸：紧凑型
+                headerRowHeight: 50,
+                rowHeight: 35, // 变矮了
+                
+                // 任务条样式：简单的蓝绿配色
                 taskBar: {
                     selectable: true,
                     startDateField: 'start',
                     endDateField: 'end',
                     progressField: 'progress',
                     labelText: '{title} ({progress}%)',
-                    labelTextStyle: { fontFamily: 'Arial, sans-serif', fontSize: 14, textAlign: 'left', color: '#24292f' },
+                    labelTextStyle: {
+                        fontFamily: 'Arial, sans-serif',
+                        fontSize: 12,
+                        textAlign: 'left',
+                        color: '#24292f'
+                    },
                     barStyle: {
-                      width: 50, // 【修改】高度加大
-                      cornerRadius: 6,
-                      borderWidth: 1,
-                      borderColor: '#e5e7eb',
-                
-                      // 【修改】动态底色
-                      barColor: (args) => {
-                        const record = args.taskRecord || args; 
-                        return getTaskColor(record).bg;
-                      },
-                      
-                      // 【修改】动态完成色
-                      completedBarColor: (args) => {
-                        const record = args.taskRecord || args;
-                        return getTaskColor(record).main;
-                      }
+                        width: 24, // 变细了
+                        barColor: '#3b82f6', // 蓝色
+                        completedBarColor: '#10b981', // 绿色
+                        cornerRadius: 6,
+                        borderWidth: 1,
+                        borderColor: '#e5e7eb'
                     },
                     progressAdjustable: true
                 },
+                
+                // 时间轴样式
                 timelineHeader: {
-                    backgroundColor: '#f0f0fb',
-                    colWidth: 80,
-                    scales: getScalesConfig(timeScale)
+                    verticalLine: { lineWidth: 1, lineColor: '#d1d5db' },
+                    horizontalLine: { lineWidth: 1, lineColor: '#d1d5db' },
+                    backgroundColor: '#f9fafb',
+                    colWidth: 40,
+                    scales: [
+                        {
+                            unit: 'week',
+                            step: 1,
+                            startOfWeek: 'sunday',
+                            format(date) { return `第 ${date.dateIndex} 周`; },
+                            style: { fontSize: 16, fontWeight: 'bold', color: '#111827', textAlign: 'center', backgroundColor: '#f9fafb' }
+                        },
+                        {
+                            unit: 'day',
+                            step: 1,
+                            format(date) { return date.dateIndex.toString(); },
+                            style: { fontSize: 14, color: '#374151', textAlign: 'center', backgroundColor: '#f9fafb' }
+                        }
+                    ]
                 },
+                
                 minDate: formatDate(today),
                 maxDate: formatDate(maxDate),
-                scrollStyle: { scrollRailColor: 'RGBA(246,246,246,0.5)', visible: 'focus', width: 6, scrollSliderCornerRadius: 2, scrollSliderColor: '#5cb85c' },
-                overscrollBehavior: 'none',
-                markLineCreateOptions: { markLineCreatable: true, markLineCreationHoverToolTip: { position: 'top', tipContent: '创建里程碑', style: { contentStyle: { fill: '#fff' }, panelStyle: { background: '#14161c', cornerRadius: 4 } } }, markLineCreationStyle: { fill: '#ccc', size: 30, iconSize: 12, svg: simplePlusIcon } }
+                
+                // 行号
+                rowSeriesNumber: {
+                    title: '#',
+                    width: 40,
+                    headerStyle: { bgColor: '#f9fafb', borderColor: '#d1d5db' },
+                    style: { borderColor: '#d1d5db' }
+                },
+                
+                scrollStyle: {
+                    visible: 'scrolling',
+                    width: 8,
+                    scrollRailColor: '#f3f4f6',
+                    scrollSliderColor: '#d1d5db'
+                },
+                overscrollBehavior: 'none'
             };
 
             const ganttInstance = new VTableGantt.Gantt(containerRef.current, option);
@@ -314,27 +331,22 @@ const GanttChart = () => {
 
             // --- 事件监听 ---
 
-            // 1. 监听 Checkbox 勾选
+            // 1. Checkbox
             ganttInstance.on('checkbox_state_change', (args) => {
                 const { col, row, checked } = args;
                 const record = instanceRef.current.getRecordByCell(col, row);
-                
                 if (record) {
-                    console.log(`Checkbox changed for task ${record.id}: ${checked}`);
-                    // 递归更新 State
                     setRecords(prev => {
                         const updateRecursive = (nodes) => {
                             return nodes.map(node => {
                                 if (node.id === record.id) {
                                     return { 
                                         ...node, 
-                                        is_completed: checked, // 保持 Boolean
-                                        progress: checked ? 100 : node.progress // 勾选自动100%
+                                        is_completed: checked,
+                                        progress: checked ? 100 : node.progress
                                     };
                                 }
-                                if (node.children) {
-                                    return { ...node, children: updateRecursive(node.children) };
-                                }
+                                if (node.children) return { ...node, children: updateRecursive(node.children) };
                                 return node;
                             });
                         };
@@ -343,7 +355,7 @@ const GanttChart = () => {
                 }
             });
 
-            // 2. 监听单元格编辑
+            // 2. Cell Edit
             const handleCellEdit = (args) => {
                 const { col, row, field, value } = args;
                 const record = instanceRef.current.getRecordByCell(col, row);
@@ -367,17 +379,16 @@ const GanttChart = () => {
                 });
             };
 
-            // 3. 监听任务条拖拽/调整
+            // 3. Task Drag/Resize
             const handleTaskChange = (args) => {
                 if (isUpdatingExternally.current) {
                     requestAnimationFrame(() => isUpdatingExternally.current = false);
                     return;
                 }
-                // VTable 返回的是更新后的 flat 或 tree 结构，这里直接更新状态
                 setRecords(args.records);
             };
             
-            // 4. 里程碑交互
+            // 4. MarkLine
             const handleMarkLineCreate = ({ data, position }) => {
                 createPopup({ date: data.startDate, content: '' }, position, async value => {
                   const newMarkLine = {
@@ -391,7 +402,6 @@ const GanttChart = () => {
                   if (result.success) setMarkLines(prev => [...prev, newMarkLine]);
                 });
             };
-      
             const handleMarkLineClick = ({ data, position }) => {
                 createPopup({ date: data.date, content: data.content }, position, async value => {
                   const updatedMarkLine = { ...data, content: value || data.content, store_id: storeId };
@@ -402,7 +412,7 @@ const GanttChart = () => {
                 });
             };
 
-            // 5. 右键菜单
+            // 5. Context Menu
             const handleContextMenu = (args) => {
                 args.event.preventDefault();
                 const record = instanceRef.current.getRecordByCell(args.col, args.row);
@@ -420,36 +430,22 @@ const GanttChart = () => {
 
         return () => {
             if (instanceRef.current) {
-                console.log("Releasing Gantt Instance.");
                 instanceRef.current.release();
                 instanceRef.current = null;
             }
         };
-    }, []); // Only run once on mount
+    }, []);
 
     // --- 同步 State 到 Gantt ---
-
     useEffect(() => {
-        if (instanceRef.current) {
-            instanceRef.current.setRecords(records);
-        }
+        if (instanceRef.current) instanceRef.current.setRecords(records);
     }, [records]);
 
     useEffect(() => {
-        if (instanceRef.current && markLines) {
-            instanceRef.current.updateMarkLine(markLines);
-        }
+        if (instanceRef.current && markLines) instanceRef.current.updateMarkLine(markLines);
     }, [markLines]);
 
-    useEffect(() => {
-        if (instanceRef.current) {
-            instanceRef.current.updateScales(getScalesConfig(timeScale));
-        }
-    }, [timeScale]);
-
-
     // --- 按钮操作 ---
-
     const handleRefresh = () => fetchData();
 
     const handleSaveChanges = async () => {
@@ -457,11 +453,8 @@ const GanttChart = () => {
         try {
             console.log("Saving records:", records);
             const result = await apiCall('tasks', 'POST', { records, storeId });
-            if (result.success) {
-                message.success('更改已成功保存');
-            } else {
-                message.error('保存失败: ' + (result.error?.message || '未知错误'));
-            }
+            if (result.success) message.success('更改已成功保存');
+            else message.error('保存失败: ' + (result.error?.message || '未知错误'));
         } catch (error) {
             message.error('保存失败: ' + error.message);
         } finally {
@@ -491,13 +484,12 @@ const GanttChart = () => {
             message.error('添加失败: ' + e.message);
         } finally {
             setIsLoading(false);
-            if (contextMenu.visible) setContextMenu({ visible: false, x: 0, y: 0, record: null });
+            setContextMenu({ visible: false, x: 0, y: 0, record: null });
         }
     };
 
     return (
         <div style={{ height: '100%', width: '100%', display: 'flex', flexDirection: 'column', position: 'relative' }}>
-            {/* 右键菜单 DOM */}
             {contextMenu.visible && (
                 <div 
                     style={{
@@ -512,15 +504,11 @@ const GanttChart = () => {
                 </div>
             )}
             
-            {/* 顶部工具栏 */}
             <div style={{ padding: '10px', borderBottom: '1px solid #eee', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <Space>
-                    <span>时间粒度：</span>
-                    <Button type={timeScale === 'day' ? 'primary' : 'default'} onClick={() => setTimeScale('day')}>日</Button>
-                    <Button type={timeScale === 'week' ? 'primary' : 'default'} onClick={() => setTimeScale('week')}>周</Button>
-                    <Button type={timeScale === 'month' ? 'primary' : 'default'} onClick={() => setTimeScale('month')}>月</Button>
+                   {/* 移除了时间粒度切换，因为TimelineHeader写死了week/day，如需动态切换需要再把state加回来 */}
+                   <span style={{fontWeight:'bold'}}>项目排期表</span>
                 </Space>
-                
                 <Space>
                     <Link to={`/crowd-portrait/${storeId}`}><Button>人群画像分析</Button></Link>
                     <Button onClick={handleRefresh} disabled={isLoading}>{isLoading ? '正在刷新...' : '刷新同步数据'}</Button>
@@ -531,7 +519,6 @@ const GanttChart = () => {
                 </Space>
             </div>
             
-            {/* 甘特图容器 */}
             <div ref={containerRef} style={{ flex: 1, width: '100%' }} />
         </div>
     );
