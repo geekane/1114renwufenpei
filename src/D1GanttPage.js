@@ -18,27 +18,35 @@ const calculateAutoProgress = (start, end) => {
     const endDate = new Date(end);
     const today = new Date();
 
-    // 如果今天还没到开始日期，进度为 0
-    if (today < startDate) {
-        return 0;
-    }
-    // 如果今天已经超过结束日期，进度为 100
-    if (today > endDate) {
-        return 100;
-    }
+    if (today < startDate) return 0;
+    if (today > endDate) return 100;
 
     const totalDuration = endDate.getTime() - startDate.getTime();
+    if (totalDuration === 0) return 100;
+    
     const elapsedDuration = today.getTime() - startDate.getTime();
-
-    // 避免总时长为0导致除法错误
-    if (totalDuration === 0) {
-        return 100;
-    }
-
     const progress = (elapsedDuration / totalDuration) * 100;
-    return Math.min(100, Math.round(progress)); // 确保进度不超过100并四舍五入
+    return Math.min(100, Math.round(progress));
 };
 
+function getProgressColorConfig(progress) {
+  let p = parseFloat(progress);
+  if (isNaN(p)) p = 0;
+  if (p > 0 && p <= 1) p = p * 100;
+
+  if (p >= 100) return { main: '#10b981', bg: '#d1fae5' }; // Green
+  if (p >= 60) return { main: '#3b82f6', bg: '#dbeafe' }; // Blue
+  if (p >= 30) return { main: '#f97316', bg: '#ffedd5' }; // Orange
+  return { main: '#ef4444', bg: '#fee2e2' }; // Red
+}
+
+function getTaskColor(record) {
+  const isDone = record.is_completed === 1 || record.is_completed === true;
+  if (isDone || parseFloat(record.progress) >= 100) {
+     return { main: '#059669', bg: '#A7F3D0' }; // Emerald Green
+  }
+  return getProgressColorConfig(record.progress);
+}
 
 function createPopup({ date, content }, position, callback) {
     let container = document.getElementById('live-demo-additional-container');
@@ -55,48 +63,36 @@ function createPopup({ date, content }, position, callback) {
     }
     
     const existingPopup = container.querySelector('.popup');
-    if (existingPopup) {
-        existingPopup.remove();
-    }
-    const popup = document.createElement('div');
-    popup.className = 'popup';
-    popup.style.top = `${position.top}px`;
-    popup.style.left = `${position.left}px`;
-    popup.style.position = 'absolute';
-    popup.style.zIndex = '1000';
-    popup.style.background = 'white';
-    popup.style.border = '1px solid #ccc';
-    popup.style.padding = '10px';
-    popup.style.boxShadow = '0 2px 10px rgba(0,0,0,0.1)';
-    popup.style.pointerEvents = 'auto';
+    if (existingPopup) existingPopup.remove();
 
-    const dateString = typeof date === 'string' ? date : formatDate(date);
+    const popup = document.createElement('div');
+    Object.assign(popup.style, {
+        position: 'absolute', top: `${position.top}px`, left: `${position.left}px`,
+        zIndex: '1000', background: 'white', border: '1px solid #ccc',
+        padding: '10px', boxShadow: '0 2px 10px rgba(0,0,0,0.1)', pointerEvents: 'auto'
+    });
+    
     popup.innerHTML = `
       <button class="close-btn" style="position: absolute; top: 5px; right: 5px; border: none; background: transparent; font-size: 1.2em; cursor: pointer;">&times;</button>
-      <div style="margin-bottom: 5px;">日期：${dateString}</div>
-      <input type="text" placeholder="输入内容" class="popup-input" value="${content || ''}" style="width: 150px; margin-bottom: 5px; padding: 5px;" />
+      <div>日期：${typeof date === 'string' ? date : formatDate(date)}</div>
+      <input type="text" placeholder="输入内容" class="popup-input" value="${content || ''}" style="width: 150px; margin: 5px 0; padding: 5px;" />
       <button class="confirm-btn" style="padding: 5px 10px; cursor: pointer;">确定</button>
-  `;
+    `;
     popup.querySelector('.close-btn').onclick = () => popup.remove();
     popup.querySelector('.confirm-btn').onclick = () => {
         const inputValue = popup.querySelector('.popup-input').value;
         popup.remove();
-        if (typeof callback === 'function') {
-            callback(inputValue);
-        }
+        if (typeof callback === 'function') callback(inputValue);
     };
     container.appendChild(popup);
     popup.querySelector('.popup-input').focus();
 }
 
-// Helper for API calls to the backend
 const apiCall = async (endpoint, method = 'POST', body) => {
     try {
         const response = await fetch(`/api/${endpoint}`, {
             method,
-            headers: {
-                'Content-Type': 'application/json',
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(body),
         });
         if (!response.ok) {
@@ -111,62 +107,13 @@ const apiCall = async (endpoint, method = 'POST', body) => {
     }
 };
 
-const getChineseWeekday = (date) => {
-    const day = new Date(date).getDay();
-    const weekdays = ['日', '一', '二', '三', '四', '五', '六'];
-    return `周${weekdays[day]}`;
-};
-
 const getScalesConfig = (scaleType) => {
+    // Simplified scales config
+    const commonMonth = { unit: 'month', step: 1, format: (ctx) => `${ctx.startDate.getFullYear()}年 ${ctx.startDate.getMonth() + 1}月`, style: { textStick: true, fontSize: 14, fontWeight: 'bold', color: '#111827' } };
     switch (scaleType) {
-        case 'week':
-            return [
-                {
-                    unit: 'month',
-                    step: 1,
-                    format: (context) => `${context.startDate.getFullYear()}年 ${context.startDate.getMonth() + 1}月`,
-                    style: { textStick: true, fontSize: 14, fontWeight: 'bold', color: '#111827' }
-                },
-                {
-                    unit: 'week',
-                    step: 1,
-                    format(date) {
-                      return `第 ${date.dateIndex} 周`;
-                    },
-                    style: { fontSize: 12, color: '#374151' }
-                }
-            ];
-        case 'month':
-            return [
-                {
-                    unit: 'year',
-                    step: 1,
-                    format: (context) => `${context.startDate.getFullYear()}年`,
-                    style: { textStick: true, fontSize: 16, fontWeight: 'bold', color: '#111827' }
-                },
-                {
-                    unit: 'month',
-                    step: 1,
-                    format: (context) => `${context.startDate.getMonth() + 1}月`,
-                    style: { fontSize: 14, color: '#374151' }
-                }
-            ];
-        case 'day':
-        default:
-            return [
-                {
-                    unit: 'month',
-                    step: 1,
-                    format: (context) => `${context.startDate.getFullYear()}年 ${context.startDate.getMonth() + 1}月`,
-                    style: { textStick: true, fontSize: 14, fontWeight: 'bold', color: '#111827', textAlign: 'center' }
-                },
-                {
-                    unit: 'day',
-                    step: 1,
-                    format: (date) => date.dateIndex.toString(),
-                    style: { fontSize: 14, color: '#374151', textAlign: 'center' }
-                }
-            ];
+        case 'week': return [commonMonth, { unit: 'week', step: 1, format: (d) => `第 ${d.dateIndex} 周`, style: { fontSize: 12, color: '#374151' } }];
+        case 'month': return [{ unit: 'year', step: 1, format: (ctx) => `${ctx.startDate.getFullYear()}年`, style: { textStick: true, fontSize: 16, fontWeight: 'bold', color: '#111827' } }, { unit: 'month', step: 1, format: (ctx) => `${ctx.startDate.getMonth() + 1}月`, style: { fontSize: 14, color: '#374151' } }];
+        default: return [commonMonth, { unit: 'day', step: 1, format: (d) => d.dateIndex.toString(), style: { fontSize: 14, color: '#374151', textAlign: 'center' } }];
     }
 };
 
@@ -192,45 +139,26 @@ const GanttChart = () => {
         setIsLoading(true);
         try {
             const response = await fetch(`/api/data/${storeId}`);
-            if (!response.ok) {
-                throw new Error(`Network response was not ok: ${response.statusText}`);
-            }
+            if (!response.ok) throw new Error(`Network response was not ok: ${response.statusText}`);
             const data = await response.json();
             
-            let earliestStart = null;
-            let latestEnd = null;
-
-            const processRecords = (tasks) => {
-                return tasks.map(task => {
-                    const newTask = { ...task };
-                    newTask.progress = calculateAutoProgress(task.start, task.end);
-
-                    const startDate = new Date(task.start);
-                    const endDate = new Date(task.end);
-
-                    if (!earliestStart || startDate < earliestStart) {
-                        earliestStart = startDate;
-                    }
-                    if (!latestEnd || endDate > latestEnd) {
-                        latestEnd = endDate;
-                    }
-
-                    if (task.children) {
-                        newTask.children = processRecords(task.children);
-                    }
-                    return newTask;
-                });
-            };
+            let earliestStart = null, latestEnd = null;
+            const processRecords = (tasks) => tasks.map(task => {
+                const newTask = { ...task, progress: calculateAutoProgress(task.start, task.end) };
+                const startDate = new Date(task.start), endDate = new Date(task.end);
+                if (!earliestStart || startDate < earliestStart) earliestStart = startDate;
+                if (!latestEnd || endDate > latestEnd) latestEnd = endDate;
+                if (task.children) newTask.children = processRecords(task.children);
+                return newTask;
+            });
 
             const processedRecords = processRecords(data.records || []);
-            
             if (earliestStart && latestEnd) {
                 setMinDate(formatDate(earliestStart));
                 setMaxDate(formatDate(latestEnd));
             }
-
-            setRecords(Array.isArray(processedRecords) ? processedRecords : []);
-            setMarkLines(Array.isArray(data.markLines) ? data.markLines : []);
+            setRecords(processedRecords);
+            setMarkLines(data.markLines || []);
         } catch (error) {
             console.error('ERROR: Failed to fetch or parse data from API.', error);
             alert('数据加载失败，请检查网络或联系管理员！');
@@ -239,10 +167,7 @@ const GanttChart = () => {
         }
     };
 
-    useEffect(() => {
-        fetchData();
-    }, [storeId]);
-
+    useEffect(() => { fetchData(); }, [storeId]);
     useEffect(() => {
         const handleClick = () => setContextMenu({ visible: false, x: 0, y: 0, record: null });
         window.addEventListener('click', handleClick);
@@ -251,112 +176,37 @@ const GanttChart = () => {
 
     useEffect(() => {
         if (containerRef.current && !instanceRef.current) {
-            const inputEditor = new InputEditor();
-            VTable.register.editor('input-editor', inputEditor);
-            const dateEditor = new DateInputEditor();
-            VTable.register.editor('date-editor', dateEditor);
+            VTable.register.editor('input-editor', new InputEditor());
+            VTable.register.editor('date-editor', new DateInputEditor());
 
             const columns = [
-              { field: 'title', title: '任务名称', width: 120, sort: true, tree: true, editor: 'input-editor' },
-              { field: 'start', title: '开始日期', width: 100, sort: true, editor: 'date-editor' },
-              { field: 'end', title: '结束日期', width: 100, sort: true, editor: 'date-editor' },
-              { field: 'progress', title: '进度', width: 80, sort: true, editor: 'input-editor' },
+                { field: 'is_completed', title: '✓', width: 40, cellType: 'checkbox', style: { textAlign: 'center' } },
+                { field: 'title', title: '任务名称', width: 120, sort: true, tree: true, editor: 'input-editor' },
+                { field: 'start', title: '开始日期', width: 100, sort: true, editor: 'date-editor' },
+                { field: 'end', title: '结束日期', width: 100, sort: true, editor: 'date-editor' },
+                { field: 'progress', title: '进度', width: 80, sort: true, editor: 'input-editor' },
             ];
 
             const option = {
-                records,
-                markLine: markLines,
-                taskListTable: {
-                    columns: columns,
-                    tableWidth: 500,
-                    minTableWidth: 300,
-                    maxTableWidth: 800,
-                    hierarchyIndent: 25,
-                    hierarchyExpandLevel: 2,
-                },
+                records, markLine: markLines, minDate, maxDate,
+                taskListTable: { columns, tableWidth: 500, minTableWidth: 300, maxTableWidth: 800, hierarchyIndent: 25, hierarchyExpandLevel: 2 },
                 tasksShowMode: 'tasks_separate',
-                frame: {
-                    verticalSplitLineMoveable: true,
-                    outerFrameStyle: {
-                      borderLineWidth: 1,
-                      borderColor: '#e5e7eb',
-                      cornerRadius: 8
-                    },
-                    verticalSplitLine: {
-                      lineWidth: 2,
-                      lineColor: '#d1d5db'
-                    },
-                    verticalSplitLineHighlight: {
-                      lineColor: '#3b82f6',
-                      lineWidth: 2
-                    }
-                },
-                grid: {
-                    verticalLine: {
-                      lineWidth: 1,
-                      lineColor: '#f3f4f6'
-                    },
-                    horizontalLine: {
-                      lineWidth: 1,
-                      lineColor: '#f3f4f6'
-                    }
-                },
-                headerRowHeight: 50,
-                rowHeight: 35,
+                frame: { verticalSplitLineMoveable: true, outerFrameStyle: { borderWidth: 1, borderColor: '#e5e7eb', cornerRadius: 8 }, verticalSplitLine: { lineWidth: 2, lineColor: '#d1d5db' }, verticalSplitLineHighlight: { lineColor: '#3b82f6', lineWidth: 2 } },
+                grid: { verticalLine: { lineWidth: 1, lineColor: '#f3f4f6' }, horizontalLine: { lineWidth: 1, lineColor: '#f3f4f6' } },
+                headerRowHeight: 50, rowHeight: 35,
                 taskBar: {
-                    selectable: true,
-                    startDateField: 'start',
-                    endDateField: 'end',
-                    progressField: 'progress',
-                    labelText: '{title} ({progress}%)',
-                    labelTextStyle: {
-                      fontFamily: 'Arial, sans-serif',
-                      fontSize: 12,
-                      textAlign: 'left',
-                      color: '#24292f'
-                    },
+                    selectable: true, startDateField: 'start', endDateField: 'end', progressField: 'progress', labelText: '{title} ({progress}%)',
+                    labelTextStyle: { fontFamily: 'Arial, sans-serif', fontSize: 12, textAlign: 'left', color: '#24292f' },
                     barStyle: {
-                      width: 24,
-                      barColor: '#3b82f6',
-                      completedBarColor: '#10b981',
-                      cornerRadius: 6,
-                      borderWidth: 1,
-                      borderColor: '#e5e7eb'
+                        width: 24, cornerRadius: 6, borderWidth: 1, borderColor: '#e5e7eb',
+                        barColor: (args) => getTaskColor(args.taskRecord || args).bg,
+                        completedBarColor: (args) => getTaskColor(args.taskRecord || args).main,
                     },
                     progressAdjustable: true
                 },
-                timelineHeader: {
-                    verticalLine: {
-                      lineWidth: 1,
-                      lineColor: '#d1d5db'
-                    },
-                    horizontalLine: {
-                      lineWidth: 1,
-                      lineColor: '#d1d5db'
-                    },
-                    backgroundColor: '#f9fafb',
-                    colWidth: 40,
-                    scales: getScalesConfig(timeScale)
-                },
-                minDate: minDate,
-                maxDate: maxDate,
-                rowSeriesNumber: {
-                    title: '#',
-                    width: 50,
-                    headerStyle: {
-                      bgColor: '#f9fafb',
-                      borderColor: '#d1d5db'
-                    },
-                    style: {
-                      borderColor: '#d1d5db'
-                    }
-                },
-                scrollStyle: {
-                    visible: 'scrolling',
-                    width: 8,
-                    scrollRailColor: '#f3f4f6',
-                    scrollSliderColor: '#d1d5db'
-                },
+                timelineHeader: { verticalLine: { lineWidth: 1, lineColor: '#d1d5db' }, horizontalLine: { lineWidth: 1, lineColor: '#d1d5db' }, backgroundColor: '#f9fafb', colWidth: 40, scales: getScalesConfig(timeScale) },
+                rowSeriesNumber: { title: '#', width: 50, headerStyle: { bgColor: '#f9fafb', borderColor: '#d1d5db' }, style: { borderColor: '#d1d5db' } },
+                scrollStyle: { visible: 'scrolling', width: 8, scrollRailColor: '#f3f4f6', scrollSliderColor: '#d1d5db' },
                 overscrollBehavior: 'none'
             };
 
@@ -378,41 +228,30 @@ const GanttChart = () => {
                 });
             };
             
-            const handleMarkLineCreate = ({ data, position }) => {
-                createPopup({ date: data.startDate, content: '' }, position, async value => {
-                  const newMarkLine = { date: formatDate(data.startDate), content: value || '新建里程碑', store_id: storeId, contentStyle: { color: '#fff' }, style: { lineWidth: 1, lineColor: 'red' } };
-                  const result = await apiCall('markline', 'POST', newMarkLine);
-                  if (result.success) setMarkLines(prev => [...prev, newMarkLine]);
-                });
-            };
-      
-            const handleMarkLineClick = ({ data, position }) => {
-                createPopup({ date: data.date, content: data.content }, position, async value => {
-                  const updatedMarkLine = { ...data, content: value || data.content, store_id: storeId };
-                  const result = await apiCall('markline', 'POST', updatedMarkLine);
-                  if(result.success) setMarkLines(prev => prev.map(line => line.date === data.date ? { ...line, content: value } : line));
-                });
-            };
-
-            const handleTaskChange = (args) => {
-                if (isUpdatingExternally.current) {
-                    requestAnimationFrame(() => { isUpdatingExternally.current = false; });
-                    return;
+            const handleCheckboxStateChange = (args) => {
+                const { col, row, checked } = args;
+                const record = instanceRef.current.getRecordByCell(col, row);
+                if (record) {
+                    setRecords(prev => {
+                        const updateNode = (nodes) => nodes.map(node => {
+                            if (node.id === record.id) {
+                                return { ...node, is_completed: checked, progress: checked ? 100 : node.progress }; 
+                            }
+                            if (node.children) return { ...node, children: updateNode(node.children) };
+                            return node;
+                        });
+                        return updateNode(prev);
+                    });
                 }
-                setRecords(args.records);
             };
 
-            const handleContextMenu = (args) => {
+            ganttInstance.on('after_edit_cell', handleCellEdit);
+            ganttInstance.on('checkbox_state_change', handleCheckboxStateChange);
+            ganttInstance.on('contextmenu_cell', (args) => {
                 args.event.preventDefault();
                 const record = instanceRef.current.getRecordByCell(args.col, args.row);
-                if (record) setContextMenu({ visible: true, x: args.event.clientX, y: args.event.clientY, record: record });
-            };
-    
-            ganttInstance.on('click_markline_create', handleMarkLineCreate);
-            ganttInstance.on('click_markline_content', handleMarkLineClick);
-            ganttInstance.on('change_task', handleTaskChange);
-            ganttInstance.on('after_edit_cell', handleCellEdit);
-            ganttInstance.on('contextmenu_cell', handleContextMenu);
+                if (record) setContextMenu({ visible: true, x: args.event.clientX, y: args.event.clientY, record });
+            });
         }
 
         return () => {
@@ -423,31 +262,21 @@ const GanttChart = () => {
         };
     }, []);
 
-    useEffect(() => {
-        if (instanceRef.current) instanceRef.current.setRecords(records);
-    }, [records]);
-
-    useEffect(() => {
-        if (instanceRef.current) instanceRef.current.updateMarkLine(markLines);
-    }, [markLines]);
-
-    useEffect(() => {
-        if (instanceRef.current) {
-            instanceRef.current.updateScales(getScalesConfig(timeScale));
-        }
-    }, [timeScale]);
+    useEffect(() => { if (instanceRef.current) instanceRef.current.setRecords(records); }, [records]);
+    useEffect(() => { if (instanceRef.current) instanceRef.current.updateMarkLine(markLines); }, [markLines]);
+    useEffect(() => { if (instanceRef.current) instanceRef.current.updateScales(getScalesConfig(timeScale)); }, [timeScale]);
     
     useEffect(() => {
         if (instanceRef.current && minDate && maxDate) {
             instanceRef.current.updateOption({
-                minDate: minDate,
-                maxDate: maxDate,
+                records, // Pass records to provide full context
+                minDate,
+                maxDate
             });
         }
-    }, [minDate, maxDate]);
+    }, [minDate, maxDate, records]); // Add records to dependency array
 
     const handleRefresh = () => fetchData();
-
     const handleSaveChanges = async () => {
         setIsLoading(true);
         try {
@@ -476,7 +305,7 @@ const GanttChart = () => {
             message.error('添加失败: ' + e.message);
         } finally {
             setIsLoading(false);
-            if (contextMenu.visible) setContextMenu({ visible: false, x: 0, y: 0, record: null });
+            setContextMenu({ visible: false, x: 0, y: 0, record: null });
         }
     };
 
