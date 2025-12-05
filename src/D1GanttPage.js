@@ -174,28 +174,9 @@ useEffect(() => {
                 cellType: 'checkbox',
                 style: { textAlign: 'center' }
             },
-            {
-                field: 'title',
-                title: '任务名称',
-                width: 200,
-                sort: true,
-                tree: true,
-                editor: 'input-editor'
-            },
-            {
-                field: 'start',
-                title: '开始日期',
-                width: 100,
-                sort: true,
-                editor: 'date-editor'
-            },
-            {
-                field: 'end',
-                title: '结束日期',
-                width: 100,
-                sort: true,
-                editor: 'date-editor'
-            },
+            { field: 'title', title: '任务名称', width: 200, sort: true, tree: true, editor: 'input-editor' },
+            { field: 'start', title: '开始日期', width: 100, sort: true, editor: 'date-editor' },
+            { field: 'end', title: '结束日期', width: 100, sort: true, editor: 'date-editor' },
             {
                 field: 'progress',
                 title: '进度',
@@ -226,10 +207,7 @@ useEffect(() => {
                 verticalSplitLine: { lineWidth: 2, lineColor: '#d1d5db' },
                 verticalSplitLineHighlight: { lineColor: '#3b82f6', lineWidth: 2 }
             },
-            grid: {
-                verticalLine: { lineWidth: 1, lineColor: '#f3f4f6' },
-                horizontalLine: { lineWidth: 1, lineColor: '#f3f4f6' }
-            },
+            grid: { verticalLine: { lineWidth: 1, lineColor: '#f3f4f6' }, horizontalLine: { lineWidth: 1, lineColor: '#f3f4f6' } },
             headerRowHeight: 50,
             rowHeight: 35,
             taskBar: {
@@ -269,48 +247,41 @@ useEffect(() => {
         const ganttInstance = new VTableGantt.Gantt(containerRef.current, option);
         instanceRef.current = ganttInstance;
 
-        // --- 核心修复区：复选框事件监听 ---
-        ganttInstance.on('checkbox_state_change', (args) => {
-            const { col, row, checked } = args;
-            
-            // 1. 获取当前点击的记录
-            const record = instanceRef.current.getRecordByCell(col, row);
-            
-            if (record) {
-                console.log(`[DEBUG] Checkbox Clicked! ID: ${record.id}, Checked: ${checked}`);
+        // --- 关键修复：直接监听内部表格 (taskListTableInstance) ---
+        // 复选框存在于左侧的任务列表表格中，我们需要在这里监听事件
+        if (ganttInstance.taskListTableInstance) {
+            ganttInstance.taskListTableInstance.on('checkbox_state_change', (args) => {
+                const { col, row, checked } = args;
                 
-                // 2. 更新 React 状态
-                setRecords(prev => {
-                    // 递归函数：遍历整棵树找到那个 ID 并更新它
-                    const updateRecursive = (nodes) => {
-                        return nodes.map(node => {
-                            // 【重点修复】这里强制转成 String 进行对比，解决 ID 类型不一致的问题
-                            if (String(node.id) === String(record.id)) {
-                                console.log(" -> State Updated Successfully");
-                                return { 
-                                    ...node, 
-                                    is_completed: checked, // 强制更新状态
-                                    progress: checked ? 100 : node.progress 
-                                };
-                            }
-                            
-                            // 继续处理子节点
-                            if (node.children && node.children.length > 0) {
-                                return { ...node, children: updateRecursive(node.children) };
-                            }
-                            
-                            return node;
-                        });
-                    };
+                // 从内部表格获取记录
+                const record = ganttInstance.taskListTableInstance.getRecordByCell(col, row);
+                
+                if (record) {
+                    console.log(`[CHECKBOX EVENT] Task: ${record.title} (ID:${record.id}) -> ${checked}`);
                     
-                    // 返回全新的数组，触发 React 重绘
-                    return updateRecursive(prev);
-                });
-            }
-        });
-        // --- 修复结束 ---
+                    setRecords(prev => {
+                        const updateRecursive = (nodes) => {
+                            return nodes.map(node => {
+                                // 强制 ID 字符串比对
+                                if (String(node.id) === String(record.id)) {
+                                    return { 
+                                        ...node, 
+                                        is_completed: checked,
+                                        progress: checked ? 100 : node.progress 
+                                    };
+                                }
+                                if (node.children) return { ...node, children: updateRecursive(node.children) };
+                                return node;
+                            });
+                        };
+                        return updateRecursive(prev);
+                    });
+                }
+            });
+        }
+        // ----------------------------------------------------
 
-        // 其他事件监听保持不变
+        // Cell Edit
         const handleCellEdit = (args) => {
             const { col, row, field, value } = args;
             const record = instanceRef.current.getRecordByCell(col, row);
@@ -334,6 +305,7 @@ useEffect(() => {
             });
         };
 
+        // Task Drag
         const handleTaskChange = (args) => {
             if (isUpdatingExternally.current) {
                 requestAnimationFrame(() => isUpdatingExternally.current = false);
@@ -342,6 +314,7 @@ useEffect(() => {
             setRecords(args.records);
         };
         
+        // Marklines
         const handleMarkLineCreate = ({ data, position }) => {
             createPopup({ date: data.startDate, content: '' }, position, async value => {
               const newMarkLine = {
@@ -365,6 +338,7 @@ useEffect(() => {
             });
         };
 
+        // Context Menu
         const handleContextMenu = (args) => {
             args.event.preventDefault();
             const record = instanceRef.current.getRecordByCell(args.col, args.row);
@@ -373,6 +347,7 @@ useEffect(() => {
             }
         };
 
+        // 监听外层事件 (兼容性)
         ganttInstance.on('click_markline_create', handleMarkLineCreate);
         ganttInstance.on('click_markline_content', handleMarkLineClick);
         ganttInstance.on('change_task', handleTaskChange);
