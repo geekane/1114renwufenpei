@@ -180,6 +180,12 @@ const GanttChart = () => {
     const [timeScale, setTimeScale] = useState('day');
     const [isLoading, setIsLoading] = useState(false);
     const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0, record: null });
+    const [minDate, setMinDate] = useState(formatDate(new Date()));
+    const [maxDate, setMaxDate] = useState(() => {
+        const date = new Date();
+        date.setMonth(date.getMonth() + 2);
+        return formatDate(date);
+    });
 
     const fetchData = async () => {
         if (!storeId) return;
@@ -191,10 +197,24 @@ const GanttChart = () => {
             }
             const data = await response.json();
             
+            let earliestStart = null;
+            let latestEnd = null;
+
             const processRecords = (tasks) => {
                 return tasks.map(task => {
                     const newTask = { ...task };
                     newTask.progress = calculateAutoProgress(task.start, task.end);
+
+                    const startDate = new Date(task.start);
+                    const endDate = new Date(task.end);
+
+                    if (!earliestStart || startDate < earliestStart) {
+                        earliestStart = startDate;
+                    }
+                    if (!latestEnd || endDate > latestEnd) {
+                        latestEnd = endDate;
+                    }
+
                     if (task.children) {
                         newTask.children = processRecords(task.children);
                     }
@@ -203,6 +223,12 @@ const GanttChart = () => {
             };
 
             const processedRecords = processRecords(data.records || []);
+            
+            if (earliestStart && latestEnd) {
+                setMinDate(formatDate(earliestStart));
+                setMaxDate(formatDate(latestEnd));
+            }
+
             setRecords(Array.isArray(processedRecords) ? processedRecords : []);
             setMarkLines(Array.isArray(data.markLines) ? data.markLines : []);
         } catch (error) {
@@ -236,10 +262,6 @@ const GanttChart = () => {
               { field: 'end', title: '结束日期', width: 100, sort: true, editor: 'date-editor' },
               { field: 'progress', title: '进度', width: 80, sort: true, editor: 'input-editor' },
             ];
-
-            const today = new Date();
-            const maxDate = new Date();
-            maxDate.setMonth(today.getMonth() + 2);
 
             const option = {
                 records,
@@ -316,8 +338,8 @@ const GanttChart = () => {
                     colWidth: 40,
                     scales: getScalesConfig(timeScale)
                 },
-                minDate: formatDate(today),
-                maxDate: formatDate(maxDate),
+                minDate: minDate,
+                maxDate: maxDate,
                 rowSeriesNumber: {
                     title: '#',
                     width: 50,
@@ -414,6 +436,15 @@ const GanttChart = () => {
             instanceRef.current.updateScales(getScalesConfig(timeScale));
         }
     }, [timeScale]);
+    
+    useEffect(() => {
+        if (instanceRef.current && minDate && maxDate) {
+            instanceRef.current.updateOption({
+                minDate: minDate,
+                maxDate: maxDate,
+            });
+        }
+    }, [minDate, maxDate]);
 
     const handleRefresh = () => fetchData();
 
