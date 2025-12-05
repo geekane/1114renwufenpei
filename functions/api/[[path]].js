@@ -85,21 +85,30 @@ export async function onRequest(context) {
         contentStyle: JSON.parse(line.contentStyle || '{}'),
       }));
       
-      // Build tree structure from flat list
-      const taskMap = new Map(tasks.map(t => [t.id, { ...t, children: [] }]));
+      // ----------------- 修改开始 -----------------
+      // 1. 强制将 ID 转为 String 作为 Map 的 Key，防止数据库返回 Number 导致匹配失败
+      const taskMap = new Map(tasks.map(t => [String(t.id), { ...t, children: [] }]));
       const tree = [];
+
       tasks.forEach(task => {
-        if (task.parent_id && taskMap.has(task.parent_id)) {
-          const parent = taskMap.get(task.parent_id);
-          // Ensure children array exists
+        // 2. 获取 parent_id 并转为 String (如果是 null/undefined 则保持 null)
+        const pId = task.parent_id ? String(task.parent_id) : null;
+
+        // 3. 严格检查 parent_id 是否存在于 map 中
+        if (pId && taskMap.has(pId)) {
+          const parent = taskMap.get(pId);
+          // 确保 children 数组存在
           if (!parent.children) {
             parent.children = [];
           }
-          parent.children.push(taskMap.get(task.id));
+          // 将当前节点加入父节点的 children
+          parent.children.push(taskMap.get(String(task.id)));
         } else {
-          tree.push(taskMap.get(task.id));
+          // 没有父节点，或者父节点ID找不到，归为根节点
+          tree.push(taskMap.get(String(task.id)));
         }
       });
+      // ----------------- 修改结束 -----------------
 
       // Clean up empty children arrays to avoid rendering expander icons for leaf nodes
       const cleanTree = (nodes) => {
