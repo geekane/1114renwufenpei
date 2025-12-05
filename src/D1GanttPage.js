@@ -13,27 +13,28 @@ function formatDate(date) {
     return year + '-' + month + '-' + day;
 }
 
+// 根据进度返回颜色配置
 function getProgressColorConfig(progress) {
+  // 1. 使用 parseFloat 解析，可以处理 "18%"、"18"、0.18 等情况
   let p = parseFloat(progress);
+  
   if (isNaN(p)) p = 0;
 
   // 智能修正：如果进度是 0.8 这种小数，自动转为 80
-  // 只有当所有的进度数据都小于等于 1 时才生效，或者你可以强制乘 100
-  // 这里做一个简单假设：如果 p <= 1 且 p > 0，我们就认为它是小数格式
   if (p <= 1 && p > 0) {
       p = p * 100;
   }
-
-  console.log('Calculating Color for:', progress, 'Parsed as:', p); // 简单的调试日志
+  
+  // console.log(`[Debug] Task Progress: ${progress}, Parsed: ${p}`);
 
   if (p >= 100) {
-    return { main: '#10b981', bg: '#d1fae5' }; // 绿色
+    return { main: '#10b981', bg: '#d1fae5' }; // 绿色 (完成)
   } else if (p >= 60) {
-    return { main: '#3b82f6', bg: '#dbeafe' }; // 蓝色
+    return { main: '#3b82f6', bg: '#dbeafe' }; // 蓝色 (良好)
   } else if (p >= 30) {
-    return { main: '#f97316', bg: '#ffedd5' }; // 橙色
+    return { main: '#f97316', bg: '#ffedd5' }; // 橙色 (进行中)
   } else {
-    return { main: '#ef4444', bg: '#fee2e2' }; // 红色
+    return { main: '#ef4444', bg: '#fee2e2' }; // 红色 (滞后/刚开始)
   }
 }
 
@@ -98,14 +99,13 @@ const apiCall = async (endpoint, method = 'POST', body) => {
         });
         if (!response.ok) {
             const errorData = await response.json();
-            // Use a more specific error message if available
             throw new Error(errorData.details || errorData.error || `Network response was not ok: ${response.statusText}`);
         }
         return await response.json();
     } catch (error) {
         console.error(`ERROR: API call to /api/${endpoint} failed.`, error);
         alert(`操作失败: ${error.message}`);
-        return { success: false, error }; // Indicate failure
+        return { success: false, error };
     }
 };
 
@@ -167,7 +167,7 @@ const getScalesConfig = (scaleType) => {
 };
 
 const GanttChart = () => {
-    const { storeId } = useParams(); // Get storeId from URL
+    const { storeId } = useParams();
     const containerRef = useRef(null);
     const instanceRef = useRef(null);
     const isUpdatingExternally = useRef(false);
@@ -177,10 +177,8 @@ const GanttChart = () => {
     const [isLoading, setIsLoading] = useState(false);
     const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0, record: null });
 
-    // 1. Fetch data for the specific store
     const fetchData = async () => {
         if (!storeId) return;
-        console.log(`Attempting to fetch data from API for storeId: ${storeId}...`);
         setIsLoading(true);
         try {
             const response = await fetch(`/api/data/${storeId}`);
@@ -188,19 +186,8 @@ const GanttChart = () => {
                 throw new Error(`Network response was not ok: ${response.statusText}`);
             }
             const data = await response.json();
-            console.log("SUCCESS: Loaded data from API.", data);
-
-            if (Array.isArray(data.records)) {
-                setRecords(data.records);
-            } else {
-                console.error("ERROR: API response for records is not an array.", data);
-                setRecords([]); // Reset to empty array on error
-            }
-            if (Array.isArray(data.markLines)) {
-                setMarkLines(data.markLines);
-            } else {
-                setMarkLines([]);
-            }
+            setRecords(Array.isArray(data.records) ? data.records : []);
+            setMarkLines(Array.isArray(data.markLines) ? data.markLines : []);
         } catch (error) {
             console.error('ERROR: Failed to fetch or parse data from API.', error);
             alert('数据加载失败，请检查网络或联系管理员！');
@@ -209,24 +196,18 @@ const GanttChart = () => {
         }
     };
 
-    // 2. Re-fetch data when storeId changes
     useEffect(() => {
         fetchData();
     }, [storeId]);
 
-    // Close context menu on any click
     useEffect(() => {
         const handleClick = () => setContextMenu({ visible: false, x: 0, y: 0, record: null });
         window.addEventListener('click', handleClick);
         return () => window.removeEventListener('click', handleClick);
     }, []);
 
-    // This useEffect handles the INITIALIZATION of the Gantt chart instance.
-    // It runs only ONCE when the component mounts.
     useEffect(() => {
         if (containerRef.current && !instanceRef.current) {
-            console.log("EVENT: Component mounted. INITIALIZING Gantt Chart instance...");
-
             const inputEditor = new InputEditor();
             VTable.register.editor('input-editor', inputEditor);
             const dateEditor = new DateInputEditor();
@@ -238,35 +219,25 @@ const GanttChart = () => {
                 { field: 'end', title: '结束时间', width: 120, editor: 'date-editor' }
             ];
 
-            const simplePlusIcon = '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" fill=""/></svg>';
-            
             const today = new Date();
             const maxDate = new Date();
             maxDate.setMonth(today.getMonth() + 2);
 
             const option = {
-                records, // Uses the state initialized from localStorage
-                markLine: markLines, // Uses the state initialized from localStorage
+                records,
+                markLine: markLines,
                 taskListTable: {
                     columns,
                     tableWidth: 'auto',
                     minTableWidth: 300,
-                    theme: { headerStyle: { borderColor: '#e1e4e8', borderLineWidth: 0, fontSize: 18, fontWeight: 'bold', 'color': 'red' }, bodyStyle: { borderColor: '#e1e4e8', borderLineWidth: 0, fontSize: 16, color: '#4D4D4D', bgColor: '#FFF' } },
-                    hierarchyIndent: 25, // 设置缩进宽度
-                    hierarchyExpandLevel: 2, // 默认只展开 2 层
+                    theme: { headerStyle: { borderColor: '#e1e4e8', borderLineWidth: 0, fontSize: 18, fontWeight: 'bold', color: 'red' }, bodyStyle: { borderColor: '#e1e4e8', borderLineWidth: 0, fontSize: 16, color: '#4D4D4D', bgColor: '#FFF' } },
+                    hierarchyIndent: 25,
+                    hierarchyExpandLevel: 2,
                 },
                 frame: {
                   outerFrameStyle: { borderLineWidth: 0, borderColor: 'red', cornerRadius: 8 },
-                  verticalSplitLine: {
-                    lineColor: '#d5d9ee',
-                    lineWidth: 2,
-                    visible: true
-                  },
-                  verticalSplitLineHighlight: {
-                    lineColor: '#1677ff', // A common highlight color
-                    lineWidth: 3,
-                    visible: true
-                  }
+                  verticalSplitLine: { lineColor: '#d5d9ee', lineWidth: 2, visible: true },
+                  verticalSplitLineHighlight: { lineColor: '#1677ff', lineWidth: 3, visible: true }
                 },
                 grid: { backgroundColor: '#f0f0fb', horizontalLine: { lineWidth: 2, lineColor: '#d5d9ee' } },
                 headerRowHeight: 80,
@@ -284,30 +255,19 @@ const GanttChart = () => {
                       color: '#24292f'
                     },
                     barStyle: {
-                      width: 50, 
+                      width: 50,
                       cornerRadius: 6,
                       borderWidth: 1,
                       borderColor: '#e5e7eb',
-                
-                      // 1. 设置未完成部分的底色 (bg)
                       barColor: (args) => {
-                        // --- 调试代码开始 ---
                         const record = args.taskRecord || args;
-                        // 在控制台打印：任务ID、标题、原始进度值、解析后的颜色
-                        // 为了防止打印太多卡死浏览器，我们只打印前几条或者特定的任务
-                        // if (record.title.includes('测试')) { 
-                             console.log(`[Debug BarColor] Task: ${record.title}`, {
-                                 rawProgress: record.progress,
-                                 type: typeof record.progress,
-                                 parsedColor: getProgressColorConfig(record.progress)
-                             });
-                        // }
-                        // --- 调试代码结束 ---
-
+                        console.log(`[Debug BarColor] Task: ${record.title}`, {
+                            rawProgress: record.progress,
+                            type: typeof record.progress,
+                            parsedColor: getProgressColorConfig(record.progress)
+                        });
                         return getProgressColorConfig(record.progress).bg;
                       },
-                      
-                      // 2. 设置已完成部分的颜色 (main)
                       completedBarColor: (args) => {
                         const record = args.taskRecord || args;
                         return getProgressColorConfig(record.progress).main;
@@ -324,7 +284,6 @@ const GanttChart = () => {
                 maxDate: formatDate(maxDate),
                 scrollStyle: { scrollRailColor: 'RGBA(246,246,246,0.5)', visible: 'focus', width: 6, scrollSliderCornerRadius: 2, scrollSliderColor: '#5cb85c' },
                 overscrollBehavior: 'none',
-                markLineCreateOptions: { markLineCreatable: true, markLineCreationHoverToolTip: { position: 'top', tipContent: '创建里程碑', style: { contentStyle: { fill: '#fff' }, panelStyle: { background: '#14161c', cornerRadius: 4 } } }, markLineCreationStyle: { fill: '#ccc', size: 30, iconSize: 12, svg: simplePlusIcon } }
             };
 
             const ganttInstance = new VTableGantt.Gantt(containerRef.current, option);
@@ -333,166 +292,84 @@ const GanttChart = () => {
             const handleCellEdit = (args) => {
                 const { col, row, field, value } = args;
                 const record = instanceRef.current.getRecordByCell(col, row);
-
-                if (!record || !record.id || !field) {
-                    console.warn('Cell edit ignored: could not determine record ID or field.', { args, record });
-                    return;
-                }
-
-                const id = record.id;
-                let formattedValue = value;
-                if ((field === 'start' || field === 'end') && value) {
-                    formattedValue = formatDate(new Date(value));
-                }
-
-                const changedData = { [field]: formattedValue };
-                console.log(`EVENT: User edited cell. Task ID: ${id}. Staging changes.`, changedData);
-
-                // Update React state directly, don't call API yet.
+                if (!record || !record.id || !field) return;
+                const changedData = { [field]: (field === 'start' || field === 'end') ? formatDate(new Date(value)) : value };
                 setRecords(currentRecords => {
-                    const updateNode = (nodes) => {
-                        return nodes.map(node => {
-                            if (node.id === id) {
-                                return { ...node, ...changedData };
-                            }
-                            if (node.children) {
-                                return { ...node, children: updateNode(node.children) };
-                            }
-                            return node;
-                        });
-                    };
+                    const updateNode = (nodes) => nodes.map(node => {
+                        if (node.id === record.id) return { ...node, ...changedData };
+                        if (node.children) return { ...node, children: updateNode(node.children) };
+                        return node;
+                    });
                     return updateNode(currentRecords);
                 });
             };
             
             const handleMarkLineCreate = ({ data, position }) => {
                 createPopup({ date: data.startDate, content: '' }, position, async value => {
-                  const newMarkLine = {
-                    date: formatDate(data.startDate),
-                    content: value || '新建里程碑',
-                    store_id: storeId, // Associate with the current store
-                    contentStyle: {
-                        color: '#fff'
-                    },
-                    style: { lineWidth: 1, lineColor: 'red' }
-                  };
-                  
+                  const newMarkLine = { date: formatDate(data.startDate), content: value || '新建里程碑', store_id: storeId, contentStyle: { color: '#fff' }, style: { lineWidth: 1, lineColor: 'red' } };
                   const result = await apiCall('markline', 'POST', newMarkLine);
-
-                  if (result.success) {
-                    console.log("EVENT: User created new markline. Syncing with D1 was successful. UPDATING state.", newMarkLine);
-                    setMarkLines(prev => [...prev, newMarkLine]);
-                  }
+                  if (result.success) setMarkLines(prev => [...prev, newMarkLine]);
                 });
             };
       
             const handleMarkLineClick = ({ data, position }) => {
                 createPopup({ date: data.date, content: data.content }, position, async value => {
-                  // Create the updated object, ensuring we don't send undefined values
                   const updatedMarkLine = { ...data, content: value || data.content, store_id: storeId };
-                  
-                  // The backend handles UPSERT, so we just POST the updated object.
                   const result = await apiCall('markline', 'POST', updatedMarkLine);
-                  
-                  if(result.success) {
-                    console.log(`EVENT: User updated markline. Sync with D1 successful. UPDATING state for date: ${data.date}`);
-                    setMarkLines(prev =>
-                      prev.map(line =>
-                        line.date === data.date ? { ...line, content: value } : line
-                      )
-                    );
-                  }
+                  if(result.success) setMarkLines(prev => prev.map(line => line.date === data.date ? { ...line, content: value } : line));
                 });
             };
 
             const handleTaskChange = (args) => {
                 if (isUpdatingExternally.current) {
-                    console.log("INFO: Ignoring `change_task` event from external update.");
-                    requestAnimationFrame(() => {
-                        isUpdatingExternally.current = false;
-                    });
+                    requestAnimationFrame(() => { isUpdatingExternally.current = false; });
                     return;
                 }
-                const { records: newRecords } = args;
-
-                // Instead of diffing and calling the API, just update the state
-                // and mark that there are unsaved changes.
-                console.log("EVENT: `change_task` (drag/resize) fired. Staging changes.");
-                setRecords(newRecords);
+                setRecords(args.records);
             };
 
             const handleContextMenu = (args) => {
-                args.event.preventDefault(); // Prevent default browser menu
+                args.event.preventDefault();
                 const record = instanceRef.current.getRecordByCell(args.col, args.row);
-                if (record) {
-                    setContextMenu({
-                        visible: true,
-                        x: args.event.clientX,
-                        y: args.event.clientY,
-                        record: record
-                    });
-                }
+                if (record) setContextMenu({ visible: true, x: args.event.clientX, y: args.event.clientY, record: record });
             };
     
             ganttInstance.on('click_markline_create', handleMarkLineCreate);
             ganttInstance.on('click_markline_content', handleMarkLineClick);
             ganttInstance.on('change_task', handleTaskChange);
-            ganttInstance.on('after_edit_cell', handleCellEdit); // Register the new handler
+            ganttInstance.on('after_edit_cell', handleCellEdit);
             ganttInstance.on('contextmenu_cell', handleContextMenu);
         }
 
         return () => {
             if (instanceRef.current) {
-                console.log("EVENT: Component unmounting. Releasing Gantt instance.");
                 instanceRef.current.release();
                 instanceRef.current = null;
             }
         };
-    }, []); // NOTE: The empty dependency array is CRUCIAL. It ensures this effect runs only ONCE.
+    }, []);
 
-    // This useEffect is ONLY for updating the gantt instance when state changes, AFTER the initial mount.
     useEffect(() => {
-        if (instanceRef.current) {
-            console.log("SYNC: Syncing `records` state to Gantt instance.");
-            instanceRef.current.setRecords(records);
-        }
+        if (instanceRef.current) instanceRef.current.setRecords(records);
     }, [records]);
 
     useEffect(() => {
-        if (instanceRef.current) {
-            console.log("SYNC: Syncing `markLines` state to Gantt instance.");
-            instanceRef.current.updateMarkLine(markLines);
-        }
+        if (instanceRef.current) instanceRef.current.updateMarkLine(markLines);
     }, [markLines]);
 
-    // Update time scale dynamically
     useEffect(() => {
-        if (instanceRef.current) {
-            console.log("SYNC: Updating time scale to:", timeScale);
-            instanceRef.current.updateScales(getScalesConfig(timeScale));
-        }
+        if (instanceRef.current) instanceRef.current.updateScales(getScalesConfig(timeScale));
     }, [timeScale]);
 
-    // 3. 定义按钮的点击处理函数
-    const handleRefresh = () => {
-        console.log("User clicked refresh button. Fetching data again...");
-        fetchData(); // 直接调用封装好的函数
-    };
+    const handleRefresh = () => fetchData();
 
-    // 4. 定义保存更改的处理函数
     const handleSaveChanges = async () => {
         setIsLoading(true);
         try {
-            console.log("User clicked save changes button. Sending data to API...", records);
             const result = await apiCall('tasks', 'POST', { records, storeId });
-            
-            if (result.success) {
-                message.success('更改已成功保存');
-            } else {
-                message.error('保存失败: ' + (result.error?.message || '未知错误'));
-            }
+            if (result.success) message.success('更改已成功保存');
+            else message.error('保存失败: ' + (result.error?.message || '未知错误'));
         } catch (error) {
-            console.error('保存更改时发生错误:', error);
             message.error('保存失败: ' + error.message);
         } finally {
             setIsLoading(false);
@@ -500,19 +377,13 @@ const GanttChart = () => {
     };
 
     const handleAddTask = async (parentId = null) => {
-        const newTask = {
-            title: parentId ? "新子任务" : "新任务",
-            start: formatDate(new Date()),
-            end: formatDate(new Date(new Date().setDate(new Date().getDate() + 1))),
-            progress: 0,
-            parent_id: parentId
-        };
+        const newTask = { title: parentId ? "新子任务" : "新任务", start: formatDate(new Date()), end: formatDate(new Date(new Date().setDate(new Date().getDate() + 1))), progress: 0, parent_id: parentId };
         setIsLoading(true);
         try {
             const result = await apiCall('task/add', 'POST', { task: newTask, storeId });
             if (result.success) {
                 message.success('任务添加成功');
-                await fetchData(); // Easiest way to ensure tree is correct
+                await fetchData();
             } else {
                 message.error('添加失败: ' + (result.error || '未知错误'));
             }
@@ -520,32 +391,15 @@ const GanttChart = () => {
             message.error('添加失败: ' + e.message);
         } finally {
             setIsLoading(false);
-            if (contextMenu.visible) {
-                setContextMenu({ visible: false, x: 0, y: 0, record: null });
-            }
+            if (contextMenu.visible) setContextMenu({ visible: false, x: 0, y: 0, record: null });
         }
     };
 
     return (
         <div style={{ height: '100%', width: '100%', display: 'flex', flexDirection: 'column', position: 'relative' }}>
             {contextMenu.visible && (
-                <div 
-                    style={{
-                        position: 'absolute',
-                        top: contextMenu.y,
-                        left: contextMenu.x,
-                        background: 'white',
-                        border: '1px solid #ccc',
-                        borderRadius: '4px',
-                        boxShadow: '0 2px 10px rgba(0,0,0,0.2)',
-                        zIndex: 1001,
-                        padding: '5px 0'
-                    }}
-                >
-                    <div 
-                        style={{ padding: '8px 15px', cursor: 'pointer' }} 
-                        onClick={() => handleAddTask(contextMenu.record.id)}
-                    >
+                <div style={{ position: 'absolute', top: contextMenu.y, left: contextMenu.x, background: 'white', border: '1px solid #ccc', borderRadius: '4px', boxShadow: '0 2px 10px rgba(0,0,0,0.2)', zIndex: 1001, padding: '5px 0' }}>
+                    <div style={{ padding: '8px 15px', cursor: 'pointer' }} onClick={() => handleAddTask(contextMenu.record.id)}>
                         新增子任务
                     </div>
                 </div>
@@ -557,31 +411,11 @@ const GanttChart = () => {
                     <Button type={timeScale === 'week' ? 'primary' : 'default'} onClick={() => setTimeScale('week')}>周</Button>
                     <Button type={timeScale === 'month' ? 'primary' : 'default'} onClick={() => setTimeScale('month')}>月</Button>
                 </Space>
-                
                 <Space>
-                    <Link to={`/crowd-portrait/${storeId}`}>
-                        <Button>人群画像分析</Button>
-                    </Link>
-                    <Button
-                        onClick={handleRefresh}
-                        disabled={isLoading}
-                    >
-                        {isLoading ? '正在刷新...' : '刷新同步数据'}
-                    </Button>
-                    <Button
-                        onClick={() => handleAddTask(null)}
-                        disabled={isLoading}
-                    >
-                        新增任务
-                    </Button>
-                    <Button
-                        type="primary"
-                        onClick={handleSaveChanges}
-                        disabled={isLoading}
-                        loading={isLoading}
-                    >
-                        {isLoading ? '正在保存...' : '保存更改到云端'}
-                    </Button>
+                    <Link to={`/crowd-portrait/${storeId}`}><Button>人群画像分析</Button></Link>
+                    <Button onClick={handleRefresh} disabled={isLoading}>{isLoading ? '正在刷新...' : '刷新同步数据'}</Button>
+                    <Button onClick={() => handleAddTask(null)} disabled={isLoading}>新增任务</Button>
+                    <Button type="primary" onClick={handleSaveChanges} disabled={isLoading} loading={isLoading}>{isLoading ? '正在保存...' : '保存更改到云端'}</Button>
                 </Space>
             </div>
             <div ref={containerRef} style={{ flex: 1, width: '100%' }} />
