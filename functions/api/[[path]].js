@@ -1,570 +1,534 @@
-// A simple JSON response helper
-const jsonResponse = (data, status = 200) => {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: { 'Content-Type': 'application/json' },
-  });
+// --- START OF FILE D1GanttPage.js ---
+
+import React, { useEffect, useRef, useState } from 'react';
+import { useParams, Link } from 'react-router-dom';
+import { Button, Space, message } from 'antd';
+import * as VTable from '@visactor/vtable';
+import * as VTableGantt from '@visactor/vtable-gantt';
+import { DateInputEditor, InputEditor } from '@visactor/vtable-editors';
+
+// --- 辅助函数 ---
+
+function formatDate(date) {
+    if (!date) return '';
+    const d = new Date(date);
+    if (isNaN(d.getTime())) return '';
+    const year = d.getFullYear();
+    const month = ('0' + (d.getMonth() + 1)).slice(-2);
+    const day = ('0' + d.getDate()).slice(-2);
+    return year + '-' + month + '-' + day;
+}
+
+// 里程碑弹窗逻辑
+function createPopup({ date, content }, position, callback) {
+    let container = document.getElementById('live-demo-additional-container');
+    if (!container) {
+      container = document.createElement('div');
+      container.id = 'live-demo-additional-container';
+      container.style.position = 'absolute';
+      container.style.top = '0';
+      container.style.left = '0';
+      container.style.width = '100%';
+      container.style.height = '100%';
+      container.style.pointerEvents = 'none';
+      document.body.appendChild(container);
+    }
+    
+    const existingPopup = container.querySelector('.popup');
+    if (existingPopup) existingPopup.remove();
+
+    const popup = document.createElement('div');
+    popup.className = 'popup';
+    Object.assign(popup.style, {
+        top: `${position.top}px`,
+        left: `${position.left}px`,
+        position: 'absolute',
+        zIndex: '1000',
+        background: 'white',
+        border: '1px solid #ccc',
+        padding: '10px',
+        boxShadow: '0 2px 10px rgba(0,0,0,0.1)',
+        pointerEvents: 'auto'
+    });
+
+    const dateString = typeof date === 'string' ? date : formatDate(date);
+    popup.innerHTML = `
+      <button class="close-btn" style="position: absolute; top: 5px; right: 5px; border: none; background: transparent; font-size: 1.2em; cursor: pointer;">&times;</button>
+      <div style="margin-bottom: 5px;">日期：${dateString}</div>
+      <input type="text" placeholder="输入内容" class="popup-input" value="${content || ''}" style="width: 150px; margin-bottom: 5px; padding: 5px;" />
+      <button class="confirm-btn" style="padding: 5px 10px; cursor: pointer;">确定</button>
+  `;
+    popup.querySelector('.close-btn').onclick = () => popup.remove();
+    popup.querySelector('.confirm-btn').onclick = () => {
+        const inputValue = popup.querySelector('.popup-input').value;
+        popup.remove();
+        if (typeof callback === 'function') callback(inputValue);
+    };
+    container.appendChild(popup);
+    popup.querySelector('.popup-input').focus();
+}
+
+// API请求封装
+const apiCall = async (endpoint, method = 'POST', body) => {
+    try {
+        const response = await fetch(`/api/${endpoint}`, {
+            method,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        });
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.details || errorData.error || response.statusText);
+        }
+        return await response.json();
+    } catch (error) {
+        console.error(`API Error /api/${endpoint}:`, error);
+        return { success: false, error };
+    }
 };
 
-// Main request handler
-export async function onRequest(context) {
-  const { request, env, params } = context;
-  const url = new URL(request.url);
-  const pathSegments = params.path || [];
+// --- 主组件 ---
 
-// Route: POST /api/tasks
-if (request.method === 'POST' && pathSegments[0] === 'tasks') {
-  try {
-    const { records, storeId } = await request.json();
+const GanttChart = () => {
+    const { storeId } = useParams();
+    const containerRef = useRef(null);
+    const instanceRef = useRef(null);
+    const isUpdatingExternally = useRef(false);
     
-    // 基本校验
-    if (!Array.isArray(records) || !storeId) {
-      return jsonResponse({ error: 'Invalid data format' }, 400);
-    }
+    // State
+    const [records, setRecords] = useState([]);
+    const [markLines, setMarkLines] = useState([]);
+    const [isLoading, setIsLoading] = useState(false);
+    const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0, record: null });
 
-    // --- 关键函数：扁平化嵌套数据 ---
-    // 你的 payload 里有 children，必须把它们拆出来变成扁平的列表才能存入 SQL
-    const flattenRecords = (nodes, parentId = null) => {
-      let flatList = [];
-      nodes.forEach(node => {
-        // 解构出 children，剩下的就是当前任务的数据
-        const { children, ...taskData } = node;
-        
-        // 确保 parent_id 正确（使用递归传进来的 parentId）
-        // 同时保留 is_completed
-        flatList.push({ 
-          ...taskData, 
-          parent_id: parentId 
-        });
+    // 1. Fetch Data
+    const fetchData = async () => {
+        if (!storeId) return;
+        setIsLoading(true);
+        console.log(`Fetching data for store: ${storeId}`);
+        try {
+            const response = await fetch(`/api/data/${storeId}`);
+            if (!response.ok) throw new Error(response.statusText);
+            const data = await response.json();
 
-        // 如果有子节点，递归处理
-        if (children && children.length > 0) {
-          flatList = flatList.concat(flattenRecords(children, node.id));
+            if (Array.isArray(data.records)) {
+                // 将后端返回的 0/1 转换为 false/true，防止 VTable 崩溃
+                const processRecords = (nodes) => {
+                    return nodes.map(node => {
+                        const boolCompleted = node.is_completed === 1 || node.is_completed === true;
+                        const children = node.children ? processRecords(node.children) : undefined;
+                        return {
+                            ...node,
+                            is_completed: boolCompleted, 
+                            children: children
+                        };
+                    });
+                };
+                setRecords(processRecords(data.records));
+            } else {
+                setRecords([]);
+            }
+
+            if (Array.isArray(data.markLines)) {
+                setMarkLines(data.markLines);
+            } else {
+                setMarkLines([]);
+            }
+        } catch (error) {
+            console.error('Data Load Error:', error);
+            message.error("数据加载失败");
+        } finally {
+            setIsLoading(false);
         }
-      });
-      return flatList;
     };
 
-    const flatRecords = flattenRecords(records);
+    // Initial Fetch
+    useEffect(() => {
+        fetchData();
+    }, [storeId]);
 
-    const statements = [
-      // 1. 先删除该门店旧数据
-      env.DB.prepare('DELETE FROM gantt_tasks WHERE store_id = ?').bind(storeId),
-      
-      // 2. 插入新数据（包含 is_completed）
-      ...flatRecords.map(rec => {
-          // 转换逻辑：前端的 true/false 转为 数据库的 1/0
-          // 如果 rec.is_completed 是 undefined/null，默认为 0
-          const completedVal = (rec.is_completed === true || rec.is_completed === 1) ? 1 : 0;
+    // Close Context Menu
+    useEffect(() => {
+        const handleClick = () => setContextMenu({ visible: false, x: 0, y: 0, record: null });
+        window.addEventListener('click', handleClick);
+        return () => window.removeEventListener('click', handleClick);
+    }, []);
 
-          return env.DB.prepare(
-            `INSERT INTO gantt_tasks (
-               id, store_id, title, start, end, progress, sub, avatar, parent_id, is_completed
-             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-          ).bind(
-            rec.id,
-            storeId,
-            rec.title,
-            rec.start,
-            rec.end,
-            rec.progress,
-            rec.sub,    // 你的 payload 里有 sub 字段
-            rec.avatar,
-            rec.parent_id,
-            completedVal // <--- 关键：这里必须绑定转换后的值
-          );
-      })
-    ];
-    
-    // 执行批量事务
-    await env.DB.batch(statements);
+    // Initialize Gantt Instance
+    useEffect(() => {
+        if (containerRef.current && !instanceRef.current) {
+            console.log("Initializing Gantt Instance with simple theme...");
+            
+            // Register Editors
+            const inputEditor = new InputEditor();
+            VTable.register.editor('input-editor', inputEditor);
+            const dateEditor = new DateInputEditor();
+            VTable.register.editor('date-editor', dateEditor);
 
-    return jsonResponse({ success: true, count: flatRecords.length });
+            // Columns 配置 (结合了您的新样式和我们的业务字段)
+            const columns = [
+                // 1. 完成状态勾选列
+                {
+                    field: 'is_completed',
+                    title: '✓',
+                    width: 40,
+                    cellType: 'checkbox',
+                    style: { textAlign: 'center' }
+                },
+                // 2. 任务名称
+                {
+                    field: 'title',
+                    title: '任务名称',
+                    width: 200,
+                    sort: true,
+                    tree: true,
+                    editor: 'input-editor'
+                },
+                // 3. 开始日期
+                {
+                    field: 'start',
+                    title: '开始日期',
+                    width: 100,
+                    sort: true,
+                    editor: 'date-editor'
+                },
+                // 4. 结束日期
+                {
+                    field: 'end',
+                    title: '结束日期',
+                    width: 100,
+                    sort: true,
+                    editor: 'date-editor'
+                },
+                // 5. 进度
+                {
+                    field: 'progress',
+                    title: '进度',
+                    width: 80,
+                    sort: true,
+                    headerStyle: { borderColor: '#e1e4e8' },
+                    style: { borderColor: '#e1e4e8', color: 'green' }
+                }
+            ];
 
-  } catch (e) {
-    console.error('Error saving tasks:', e);
-    return jsonResponse({ error: 'Failed to save.', details: e.message }, 500);
-  }
-}
+            const today = new Date();
+            const maxDate = new Date();
+            maxDate.setMonth(today.getMonth() + 2);
 
-  // Route: GET /api/data/:storeId
-  // Fetches initial records and marklines for a specific store
-  if (request.method === 'GET' && pathSegments[0] === 'data' && pathSegments[1]) {
-    const storeId = pathSegments[1];
-    try {
-      console.log(`Attempting to fetch data from D1 for store_id: ${storeId}...`);
-      if (!env.DB) {
-          throw new Error("D1 database binding 'DB' not found. Check wrangler.toml.");
-      }
+            // --- 核心配置：使用您提供的简洁样式 ---
+            const option = {
+                records: [], 
+                markLine: [],
+                taskListTable: {
+                    columns: columns,
+                    tableWidth: 'auto', // 自适应
+                    minTableWidth: 350,
+                    maxTableWidth: 800
+                },
+                tasksShowMode: 'tasks_separate',
+                
+                // 样式：灰色边框风格
+                frame: {
+                    verticalSplitLineMoveable: true,
+                    outerFrameStyle: {
+                        borderLineWidth: 1,
+                        borderColor: '#e5e7eb',
+                        cornerRadius: 8
+                    },
+                    verticalSplitLine: {
+                        lineWidth: 2,
+                        lineColor: '#d1d5db'
+                    },
+                    verticalSplitLineHighlight: {
+                        lineColor: '#3b82f6',
+                        lineWidth: 2
+                    }
+                },
+                grid: {
+                    verticalLine: {
+                        lineWidth: 1,
+                        lineColor: '#f3f4f6'
+                    },
+                    horizontalLine: {
+                        lineWidth: 1,
+                        lineColor: '#f3f4f6'
+                    }
+                },
+                
+                // 尺寸：紧凑型
+                headerRowHeight: 50,
+                rowHeight: 35, // 变矮了
+                
+                // 任务条样式：简单的蓝绿配色
+                taskBar: {
+                    selectable: true,
+                    startDateField: 'start',
+                    endDateField: 'end',
+                    progressField: 'progress',
+                    labelText: '{title} ({progress}%)',
+                    labelTextStyle: {
+                        fontFamily: 'Arial, sans-serif',
+                        fontSize: 12,
+                        textAlign: 'left',
+                        color: '#24292f'
+                    },
+                    barStyle: {
+                        width: 24, // 变细了
+                        barColor: '#3b82f6', // 蓝色
+                        completedBarColor: '#10b981', // 绿色
+                        cornerRadius: 6,
+                        borderWidth: 1,
+                        borderColor: '#e5e7eb'
+                    },
+                    progressAdjustable: true
+                },
+                
+                // 时间轴样式
+                timelineHeader: {
+                    verticalLine: { lineWidth: 1, lineColor: '#d1d5db' },
+                    horizontalLine: { lineWidth: 1, lineColor: '#d1d5db' },
+                    backgroundColor: '#f9fafb',
+                    colWidth: 40,
+                    scales: [
+                        {
+                            unit: 'week',
+                            step: 1,
+                            startOfWeek: 'sunday',
+                            format(date) { return `第 ${date.dateIndex} 周`; },
+                            style: { fontSize: 16, fontWeight: 'bold', color: '#111827', textAlign: 'center', backgroundColor: '#f9fafb' }
+                        },
+                        {
+                            unit: 'day',
+                            step: 1,
+                            format(date) { return date.dateIndex.toString(); },
+                            style: { fontSize: 14, color: '#374151', textAlign: 'center', backgroundColor: '#f9fafb' }
+                        }
+                    ]
+                },
+                
+                minDate: formatDate(today),
+                maxDate: formatDate(maxDate),
+                
+                // 行号
+                rowSeriesNumber: {
+                    title: '#',
+                    width: 40,
+                    headerStyle: { bgColor: '#f9fafb', borderColor: '#d1d5db' },
+                    style: { borderColor: '#d1d5db' }
+                },
+                
+                scrollStyle: {
+                    visible: 'scrolling',
+                    width: 8,
+                    scrollRailColor: '#f3f4f6',
+                    scrollSliderColor: '#d1d5db'
+                },
+                overscrollBehavior: 'none'
+            };
 
-      const tasksStmt = env.DB.prepare('SELECT * FROM gantt_tasks WHERE store_id = ? ORDER BY start').bind(storeId);
-      const marklinesStmt = env.DB.prepare('SELECT * FROM gantt_marklines WHERE store_id = ?').bind(storeId);
-      console.log("Statements prepared. Executing batch...");
+            const ganttInstance = new VTableGantt.Gantt(containerRef.current, option);
+            instanceRef.current = ganttInstance;
 
-      const [tasksResult, marklinesResult] = await env.DB.batch([tasksStmt, marklinesStmt]);
-      console.log("D1 batch execution complete.");
-      console.log(`Found ${tasksResult.results.length} tasks and ${marklinesResult.results.length} marklines for store ${storeId}.`);
+            // --- 事件监听 ---
 
-      const tasks = tasksResult.results || [];
-      const marklines = (marklinesResult.results || []).map(line => ({
-        ...line,
-        style: JSON.parse(line.style || '{}'),
-        contentStyle: JSON.parse(line.contentStyle || '{}'),
-      }));
-      
-      // ----------------- 修改开始 -----------------
-      // 1. 强制将 ID 转为 String 作为 Map 的 Key，防止数据库返回 Number 导致匹配失败
-      const taskMap = new Map(tasks.map(t => [String(t.id), { ...t, children: [] }]));
-      const tree = [];
+            // 1. Checkbox 状态变更逻辑 (核心修复)
+            ganttInstance.on('checkbox_state_change', (args) => {
+                const { col, row, checked } = args;
+                const record = instanceRef.current.getRecordByCell(col, row);
+                
+                if (record) {
+                    console.log(`[Checkbox] ID: ${record.id}, Title: ${record.title} -> Checked: ${checked}`);
+                    
+                    setRecords(prev => {
+                        const updateRecursive = (nodes) => {
+                            return nodes.map(node => {
+                                // 强制转为字符串比对，防止 ID 类型不一致导致匹配失败
+                                if (String(node.id) === String(record.id)) {
+                                    return { 
+                                        ...node, 
+                                        is_completed: checked, // 更新勾选状态
+                                        progress: checked ? 100 : node.progress // 体验优化：勾选自动设为 100%
+                                    };
+                                }
+                                if (node.children && node.children.length > 0) {
+                                    return { ...node, children: updateRecursive(node.children) };
+                                }
+                                return node;
+                            });
+                        };
+                        return updateRecursive(prev);
+                    });
+                } else {
+                    console.warn("[Checkbox] Clicked but no record found.");
+                }
+            });
 
-      tasks.forEach(task => {
-        // 2. 获取 parent_id 并转为 String (如果是 null/undefined 则保持 null)
-        const pId = task.parent_id ? String(task.parent_id) : null;
+            // 2. Cell Edit
+            const handleCellEdit = (args) => {
+                const { col, row, field, value } = args;
+                const record = instanceRef.current.getRecordByCell(col, row);
+                if (!record || !record.id || !field) return;
 
-        // 3. 严格检查 parent_id 是否存在于 map 中
-        if (pId && taskMap.has(pId)) {
-          const parent = taskMap.get(pId);
-          // 确保 children 数组存在
-          if (!parent.children) {
-            parent.children = [];
-          }
-          // 将当前节点加入父节点的 children
-          parent.children.push(taskMap.get(String(task.id)));
-        } else {
-          // 没有父节点，或者父节点ID找不到，归为根节点
-          tree.push(taskMap.get(String(task.id)));
+                let formattedValue = value;
+                if ((field === 'start' || field === 'end') && value) {
+                    formattedValue = formatDate(new Date(value));
+                }
+                const changedData = { [field]: formattedValue };
+
+                setRecords(currentRecords => {
+                    const updateNode = (nodes) => {
+                        return nodes.map(node => {
+                            if (node.id === record.id) return { ...node, ...changedData };
+                            if (node.children) return { ...node, children: updateNode(node.children) };
+                            return node;
+                        });
+                    };
+                    return updateNode(currentRecords);
+                });
+            };
+
+            // 3. Task Drag/Resize
+            const handleTaskChange = (args) => {
+                if (isUpdatingExternally.current) {
+                    requestAnimationFrame(() => isUpdatingExternally.current = false);
+                    return;
+                }
+                setRecords(args.records);
+            };
+            
+            // 4. MarkLine
+            const handleMarkLineCreate = ({ data, position }) => {
+                createPopup({ date: data.startDate, content: '' }, position, async value => {
+                  const newMarkLine = {
+                    date: formatDate(data.startDate),
+                    content: value || '新建里程碑',
+                    store_id: storeId,
+                    contentStyle: { color: '#fff' },
+                    style: { lineWidth: 1, lineColor: 'red' }
+                  };
+                  const result = await apiCall('markline', 'POST', newMarkLine);
+                  if (result.success) setMarkLines(prev => [...prev, newMarkLine]);
+                });
+            };
+            const handleMarkLineClick = ({ data, position }) => {
+                createPopup({ date: data.date, content: data.content }, position, async value => {
+                  const updatedMarkLine = { ...data, content: value || data.content, store_id: storeId };
+                  const result = await apiCall('markline', 'POST', updatedMarkLine);
+                  if(result.success) {
+                    setMarkLines(prev => prev.map(line => line.date === data.date ? { ...line, content: value } : line));
+                  }
+                });
+            };
+
+            // 5. Context Menu
+            const handleContextMenu = (args) => {
+                args.event.preventDefault();
+                const record = instanceRef.current.getRecordByCell(args.col, args.row);
+                if (record) {
+                    setContextMenu({ visible: true, x: args.event.clientX, y: args.event.clientY, record: record });
+                }
+            };
+
+            ganttInstance.on('click_markline_create', handleMarkLineCreate);
+            ganttInstance.on('click_markline_content', handleMarkLineClick);
+            ganttInstance.on('change_task', handleTaskChange);
+            ganttInstance.on('after_edit_cell', handleCellEdit); 
+            ganttInstance.on('contextmenu_cell', handleContextMenu);
         }
-      });
-      // ----------------- 修改结束 -----------------
 
-      // Clean up empty children arrays to avoid rendering expander icons for leaf nodes
-      const cleanTree = (nodes) => {
-        return nodes.map(node => {
-          if (node.children && node.children.length > 0) {
-            node.children = cleanTree(node.children);
-          } else {
-            delete node.children;
-          }
-          return node;
-        });
-      };
+        return () => {
+            if (instanceRef.current) {
+                instanceRef.current.release();
+                instanceRef.current = null;
+            }
+        };
+    }, []);
 
-      return jsonResponse({
-        records: cleanTree(tree),
-        markLines: marklines,
-      });
-    } catch (e) {
-      console.error('--- FATAL D1 ERROR ---');
-      console.error('Error fetching data from D1:', e);
-      console.error('Error Name:', e.name);
-      console.error('Error Message:', e.message);
-      console.error('Error Cause:', e.cause);
-      console.error('--- END FATAL D1 ERROR ---');
-      return jsonResponse({
-        error: 'Failed to fetch data from D1. See server logs for details.',
-        details: {
-          name: e.name,
-          message: e.message,
-          cause: e.cause,
-        },
-      }, 500);
-    }
-  }
+    // --- 同步 State 到 Gantt ---
+    useEffect(() => {
+        if (instanceRef.current) instanceRef.current.setRecords(records);
+    }, [records]);
 
-  // Route: POST /api/task/add
-  // Adds a new task for a specific store
-  if (request.method === 'POST' && pathSegments[0] === 'task' && pathSegments[1] === 'add') {
-    try {
-      const { task, storeId } = await request.json();
-      if (!task || !storeId) {
-        return jsonResponse({ error: 'Invalid data format, expected { task: {}, storeId: "..." }' }, 400);
-      }
+    useEffect(() => {
+        if (instanceRef.current && markLines) instanceRef.current.updateMarkLine(markLines);
+    }, [markLines]);
 
-      // Generate a unique ID for the new task
-      const newId = crypto.randomUUID();
-      const newTask = {
-        id: newId,
-        title: task.title || '新任务',
-        start: task.start,
-        end: task.end,
-        progress: task.progress || 0,
-        avatar: task.avatar || 'https://lf9-dp-fe-cms-tos.byteorg.com/obj/bit-cloud/VTable/custom-render/question.jpeg',
-        store_id: storeId,
-        parent_id: task.parent_id || null,
-        is_completed: 0
-      };
+    // --- 按钮操作 ---
+    const handleRefresh = () => fetchData();
 
-      const stmt = env.DB.prepare(
-        'INSERT INTO gantt_tasks (id, title, start, end, progress, avatar, store_id, parent_id, is_completed) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
-      );
-      await stmt.bind(
-        newTask.id, 
-        newTask.title, 
-        newTask.start, 
-        newTask.end, 
-        newTask.progress, 
-        newTask.avatar, 
-        newTask.store_id, 
-        newTask.parent_id,
-        newTask.is_completed 
-      ).run();
-
-      return jsonResponse({ success: true, task: newTask });
-
-    } catch (e) {
-      console.error('Error adding task to D1:', e);
-      return jsonResponse({ error: 'Failed to add task.', details: e.message }, 500);
-    }
-  }
-
-  // Route: DELETE /api/task/:taskId/:storeId
-  // Deletes a single task
-  if (request.method === 'DELETE' && pathSegments[0] === 'task' && pathSegments[1] && pathSegments[2]) {
-    try {
-      const taskId = pathSegments[1];
-      const storeId = pathSegments[2];
-      
-      const stmt = env.DB.prepare('DELETE FROM gantt_tasks WHERE id = ? AND store_id = ?');
-      const result = await stmt.bind(taskId, storeId).run();
-
-      if (result.changes > 0) {
-        return jsonResponse({ success: true, message: `Task ${taskId} deleted.` });
-      } else {
-        return jsonResponse({ success: false, message: 'Task not found or not deleted.' }, 404);
-      }
-
-    } catch (e) {
-      console.error('Error deleting task from D1:', e);
-      return jsonResponse({ error: 'Failed to delete task.', details: e.message }, 500);
-    }
-  }
-  
-  // Route: PATCH /api/task/:taskId
-  // Updates a single task for a specific store
-  if (request.method === 'PATCH' && pathSegments[0] === 'task' && pathSegments[1]) {
-    try {
-      const taskId = pathSegments[1];
-      const { changedData, storeId } = await request.json();
-      if (!changedData || !storeId) {
-        return jsonResponse({ error: 'Missing changedData or storeId' }, 400);
-      }
-
-      const fields = Object.keys(changedData);
-      const values = Object.values(changedData);
-      const setClause = fields.map(field => `${field} = ?`).join(', ');
-
-      const stmt = env.DB.prepare(`UPDATE gantt_tasks SET ${setClause} WHERE id = ? AND store_id = ?`);
-      await stmt.bind(...values, taskId, storeId).run();
-
-      return jsonResponse({ success: true });
-    } catch (e) {
-      console.error('Error updating task:', e);
-      return jsonResponse({ error: 'Failed to update task.', details: e.message }, 500);
-    }
-  }
-
-  // Route: POST /api/markline
-  // Creates or updates a markline for a specific store (UPSERT)
-  if (request.method === 'POST' && pathSegments[0] === 'markline') {
-    try {
-        const markline = await request.json();
-        if (!markline || !markline.date || !markline.store_id) {
-            return jsonResponse({ error: 'Invalid markline data, missing date or store_id' }, 400);
+    const handleSaveChanges = async () => {
+        setIsLoading(true);
+        try {
+            console.log("Saving records to cloud:", records); // 调试日志
+            const result = await apiCall('tasks', 'POST', { records, storeId });
+            if (result.success) message.success('更改已成功保存');
+            else message.error('保存失败: ' + (result.error?.message || '未知错误'));
+        } catch (error) {
+            message.error('保存失败: ' + error.message);
+        } finally {
+            setIsLoading(false);
         }
+    };
 
-        const { date, content, style, contentStyle, store_id } = markline;
+    const handleAddTask = async (parentId = null) => {
+        const newTask = {
+            title: parentId ? "新子任务" : "新任务",
+            start: formatDate(new Date()),
+            end: formatDate(new Date(new Date().setDate(new Date().getDate() + 1))),
+            progress: 0,
+            parent_id: parentId,
+            is_completed: 0
+        };
+        setIsLoading(true);
+        try {
+            const result = await apiCall('task/add', 'POST', { task: newTask, storeId });
+            if (result.success) {
+                message.success('任务添加成功');
+                await fetchData(); 
+            } else {
+                message.error('添加失败');
+            }
+        } catch (e) {
+            message.error('添加失败: ' + e.message);
+        } finally {
+            setIsLoading(false);
+            setContextMenu({ visible: false, x: 0, y: 0, record: null });
+        }
+    };
 
-        // Use UPSERT logic: insert, or on conflict (date and store_id exists), update.
-        const stmt = env.DB.prepare(
-            'INSERT INTO gantt_marklines (date, content, style, contentStyle, store_id) VALUES (?, ?, ?, ?, ?) ' +
-            'ON CONFLICT(date, store_id) DO UPDATE SET content=excluded.content, style=excluded.style, contentStyle=excluded.contentStyle'
-        );
-        
-        // Stringify style objects for storage
-        await stmt.bind(
-            date,
-            content,
-            JSON.stringify(style || {}),
-            JSON.stringify(contentStyle || {}),
-            store_id
-        ).run();
+    return (
+        <div style={{ height: '100%', width: '100%', display: 'flex', flexDirection: 'column', position: 'relative' }}>
+            {contextMenu.visible && (
+                <div 
+                    style={{
+                        position: 'absolute', top: contextMenu.y, left: contextMenu.x,
+                        background: 'white', border: '1px solid #ccc', borderRadius: '4px',
+                        boxShadow: '0 2px 10px rgba(0,0,0,0.2)', zIndex: 1001, padding: '5px 0'
+                    }}
+                >
+                    <div style={{ padding: '8px 15px', cursor: 'pointer' }} onClick={() => handleAddTask(contextMenu.record.id)}>
+                        新增子任务
+                    </div>
+                </div>
+            )}
+            
+            <div style={{ padding: '10px', borderBottom: '1px solid #eee', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <Space>
+                   <span style={{fontWeight:'bold'}}>项目排期表</span>
+                </Space>
+                <Space>
+                    <Link to={`/crowd-portrait/${storeId}`}><Button>人群画像分析</Button></Link>
+                    <Button onClick={handleRefresh} disabled={isLoading}>{isLoading ? '正在刷新...' : '刷新同步数据'}</Button>
+                    <Button onClick={() => handleAddTask(null)} disabled={isLoading}>新增任务</Button>
+                    <Button type="primary" onClick={handleSaveChanges} disabled={isLoading} loading={isLoading}>
+                        {isLoading ? '正在保存...' : '保存更改到云端'}
+                    </Button>
+                </Space>
+            </div>
+            
+            <div ref={containerRef} style={{ flex: 1, width: '100%' }} />
+        </div>
+    );
+};
 
-        return jsonResponse({ success: true });
-    } catch (e) {
-      console.error('Error creating/updating markline:', e);
-      return jsonResponse({
-        error: 'Failed to create/update markline.',
-        details: e.message,
-        stack: e.stack,
-      }, 500);
-    }
-  }
-
-
-
-  // Route: POST /api/upload
-  // Handles file uploads to R2
-  if (request.method === 'POST' && pathSegments[0] === 'upload') {
-    try {
-      const formData = await request.formData();
-      const file = formData.get('file');
-
-      if (!file) {
-        return jsonResponse({ error: 'No file uploaded.' }, 400);
-      }
-      
-      // Generate a unique key for the file in R2
-      const fileKey = `${Date.now()}-${file.name}`;
-      
-      await env.R2.put(fileKey, file.stream(), {
-        httpMetadata: { contentType: file.type },
-      });
-
-      return jsonResponse({ success: true, key: fileKey, name: file.name, type: file.type });
-
-    } catch (e) {
-      console.error('Error uploading to R2:', e);
-      return jsonResponse({ error: 'Failed to upload file.', details: e.message }, 500);
-    }
-  }
-
-  // Route: DELETE /api/file/:key
-  // Deletes a file from R2
-  if (request.method === 'DELETE' && pathSegments[0] === 'file' && pathSegments[1]) {
-    try {
-      const fileKey = pathSegments.slice(1).join('/'); // Handle keys with slashes
-      await env.R2.delete(fileKey);
-      return jsonResponse({ success: true, message: `File ${fileKey} deleted.` });
-    } catch (e) {
-      console.error('Error deleting file from R2:', e);
-      return jsonResponse({ error: 'Failed to delete file.', details: e.message }, 500);
-    }
-  }
-
-  // Route: POST /api/rename-file
-  // Renames a file in R2 (copy then delete)
-  if (request.method === 'POST' && pathSegments[0] === 'rename-file') {
-    try {
-      const { oldKey, newKey } = await request.json();
-      if (!oldKey || !newKey) {
-        return jsonResponse({ error: 'oldKey and newKey are required.' }, 400);
-      }
-
-      // Copy the object to the new key
-      const object = await env.R2.get(oldKey);
-      if (object === null) {
-         return jsonResponse({ error: 'Old key does not exist.' }, 404);
-      }
-      await env.R2.put(newKey, object.body, {
-          httpMetadata: object.httpMetadata,
-      });
-
-      // Delete the old object
-      await env.R2.delete(oldKey);
-
-      return jsonResponse({ success: true, message: `Renamed ${oldKey} to ${newKey}` });
-    } catch (e) {
-      console.error('Error renaming file in R2:', e);
-      return jsonResponse({ error: 'Failed to rename file.', details: e.message }, 500);
-    }
-  }
-  
-  // Route: POST /api/store-detail/:id
-  // Updates a single store detail entry
-  if (request.method === 'POST' && pathSegments[0] === 'store-detail' && pathSegments[1]) {
-    try {
-      const storeId = pathSegments[1];
-      const data = await request.json();
-
-      // We can't update the primary key, so remove it if it exists.
-      delete data.store_id;
-      delete data.key;
-
-      const fields = Object.keys(data);
-      const values = Object.values(data);
-      
-      if (fields.length === 0) {
-        return jsonResponse({ error: 'No fields to update' }, 400);
-      }
-
-      // Special handling for related_documents to ensure it's a string
-      const docIndex = fields.indexOf('related_documents');
-      if (docIndex > -1 && typeof values[docIndex] !== 'string') {
-        values[docIndex] = JSON.stringify(values[docIndex]);
-      }
-
-      const setClause = fields.map(field => `${field} = ?`).join(', ');
-
-      const stmt = env.DB.prepare(`UPDATE store_details SET ${setClause} WHERE store_id = ?`);
-      await stmt.bind(...values, storeId).run();
-
-      return jsonResponse({ success: true });
-    } catch (e)
-     {
-      console.error('Error updating store detail:', e);
-      return jsonResponse({
-        error: 'Failed to update store detail.',
-        details: e.message,
-        stack: e.stack,
-      }, 500);
-    }
-  }
-
-  // Route: POST /api/amap/geocode
-  // Proxies geocoding requests to AMap to hide origin and key.
-  if (request.method === 'POST' && pathSegments[0] === 'amap' && pathSegments[1] === 'geocode') {
-    try {
-      const { address } = await request.json();
-      if (!address) {
-        return jsonResponse({ error: 'Address is required.' }, 400);
-      }
-      const apiKey = env.AMAP_KEY;
-      if (!apiKey) {
-        return jsonResponse({ error: 'AMAP_KEY not configured on server.' }, 500);
-      }
-      
-      const amapUrl = `https://restapi.amap.com/v3/geocode/geo?key=${apiKey}&address=${encodeURIComponent(address)}`;
-      const amapResponse = await fetch(amapUrl);
-      const amapData = await amapResponse.json();
-      
-      return jsonResponse(amapData);
-
-    } catch (e) {
-      return jsonResponse({ error: 'Failed to proxy geocode request.', details: e.message }, 500);
-    }
-  }
-
-  // Route: POST /api/amap/around
-  // Proxies place around search requests to AMap.
-  if (request.method === 'POST' && pathSegments[0] === 'amap' && pathSegments[1] === 'around') {
-    try {
-      const { location, radius, keywords, types } = await request.json();
-       if (!location) {
-        return jsonResponse({ error: 'Location is required.' }, 400);
-      }
-      const apiKey = env.AMAP_KEY;
-       if (!apiKey) {
-        return jsonResponse({ error: 'AMAP_KEY not configured on server.' }, 500);
-      }
-
-      const params = new URLSearchParams({
-        key: apiKey,
-        location,
-        radius: radius || 800,
-        offset: 20,
-        page: 1
-      });
-      // Only add these if they exist to avoid empty params
-      if (keywords) params.append('keywords', keywords);
-      if (types) params.append('types', types);
-      if (types === '050000') params.append('show_fields', 'business'); // only for food search
-
-      const amapUrl = `https://restapi.amap.com/v3/place/around?${params.toString()}`;
-      const amapResponse = await fetch(amapUrl);
-      const amapData = await amapResponse.json();
-
-      return jsonResponse(amapData);
-
-    } catch(e) {
-      return jsonResponse({ error: 'Failed to proxy place search request.', details: e.message }, 500);
-    }
-  }
-
-  // Route: GET /api/portrait/:storeId
-  // Fetches cached portrait analysis for a specific store
-  if (request.method === 'GET' && pathSegments[0] === 'portrait' && pathSegments[1]) {
-    const storeId = pathSegments[1];
-    try {
-      const stmt = env.DB.prepare(
-        'SELECT portrait_score, portrait_rating, portrait_recommendation, portrait_details FROM store_details WHERE store_id = ?'
-      ).bind(storeId);
-      const data = await stmt.first();
-
-      if (data && data.portrait_score !== null) {
-        // If data exists and is valid, return it.
-        return jsonResponse({
-            ...data,
-            // Ensure details are parsed from JSON string if stored as TEXT
-            portrait_details: typeof data.portrait_details === 'string' ? JSON.parse(data.portrait_details) : data.portrait_details
-        });
-      } else {
-        // No cached data found
-        return jsonResponse({ message: "No cached portrait data found." }, 404);
-      }
-    } catch (e) {
-      console.error('Error fetching portrait data:', e);
-      return jsonResponse({ error: 'Failed to fetch portrait data.', details: e.message }, 500);
-    }
-  }
-
-  // Route: POST /api/portrait/:storeId
-  // Saves new portrait analysis data to the database for a specific store
-  if (request.method === 'POST' && pathSegments[0] === 'portrait' && pathSegments[1]) {
-    const storeId = pathSegments[1];
-    try {
-      const { portrait_score, portrait_rating, portrait_recommendation, portrait_details } = await request.json();
-
-      if (portrait_score === undefined || !portrait_rating || !portrait_recommendation || !portrait_details) {
-        return jsonResponse({ error: 'Missing required portrait data fields.' }, 400);
-      }
-
-      const stmt = env.DB.prepare(
-        'UPDATE store_details SET portrait_score = ?, portrait_rating = ?, portrait_recommendation = ?, portrait_details = ? WHERE store_id = ?'
-      );
-      
-      await stmt.bind(
-        portrait_score,
-        portrait_rating,
-        portrait_recommendation,
-        JSON.stringify(portrait_details), // Always stringify JSON for storage
-        storeId
-      ).run();
-
-      return jsonResponse({ success: true, message: 'Portrait data saved.' });
-    } catch (e) {
-      console.error('Error saving portrait data:', e);
-      return jsonResponse({ error: 'Failed to save portrait data.', details: e.message }, 500);
-    }
-  }
-
-
-  // Route: GET /api/store-details
-  // Fetches store details from the database
-  if (request.method === 'GET' && pathSegments[0] === 'store-details') {
-    try {
-      console.log("Attempting to fetch store details from D1...");
-      if (!env.DB) {
-        throw new Error("D1 database binding 'DB' not found. Check wrangler.toml.");
-      }
-
-      console.log("Preparing D1 statement for store_details...");
-      const storeDetailsStmt = env.DB.prepare('SELECT * FROM store_details ORDER BY sort_order');
-      console.log("Statement prepared. Executing query...");
-      
-      const storeDetailsResult = await storeDetailsStmt.all();
-      console.log("D1 query execution complete.");
-      console.log(`Found ${storeDetailsResult.results.length} store details.`);
-
-      return jsonResponse({
-        storeDetails: storeDetailsResult.results,
-      });
-    } catch (e) {
-      console.error('--- FATAL D1 ERROR ---');
-      console.error('Error fetching store details from D1:', e);
-      console.error('Error Name:', e.name);
-      console.error('Error Message:', e.message);
-      console.error('Error Cause:', e.cause);
-      console.error('--- END FATAL D1 ERROR ---');
-      return jsonResponse({
-        error: 'Failed to fetch store details from D1. See server logs for details.',
-        details: {
-          name: e.name,
-          message: e.message,
-          cause: e.cause,
-        },
-      }, 500);
-    }
-  }
-
-  return new Response('Not Found', { status: 404 });
-}
+export default GanttChart;
