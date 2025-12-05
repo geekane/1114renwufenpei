@@ -236,6 +236,10 @@ const GanttChart = () => {
 
             const simplePlusIcon = '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" fill=""/></svg>';
             
+            const today = new Date();
+            const maxDate = new Date();
+            maxDate.setMonth(today.getMonth() + 2);
+
             const option = {
                 records, // Uses the state initialized from localStorage
                 markLine: markLines, // Uses the state initialized from localStorage
@@ -325,8 +329,8 @@ const GanttChart = () => {
                     colWidth: 80,
                     scales: getScalesConfig(timeScale)
                 },
-                minDate: '2025-10-15',
-                maxDate: '2025-11-15',
+                minDate: formatDate(today),
+                maxDate: formatDate(maxDate),
                 scrollStyle: { scrollRailColor: 'RGBA(246,246,246,0.5)', visible: 'focus', width: 6, scrollSliderCornerRadius: 2, scrollSliderColor: '#5cb85c' },
                 overscrollBehavior: 'none',
                 markLineCreateOptions: { markLineCreatable: true, markLineCreationHoverToolTip: { position: 'top', tipContent: '创建里程碑', style: { contentStyle: { fill: '#fff' }, panelStyle: { background: '#14161c', cornerRadius: 4 } } }, markLineCreationStyle: { fill: '#ccc', size: 30, iconSize: 12, svg: simplePlusIcon } }
