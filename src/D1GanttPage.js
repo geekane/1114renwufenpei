@@ -213,7 +213,13 @@ const GanttChart = () => {
             const option = {
                 records, // Uses the state initialized from localStorage
                 markLine: markLines, // Uses the state initialized from localStorage
-                taskListTable: { columns, tableWidth: 'auto', theme: { headerStyle: { borderColor: '#e1e4e8', borderLineWidth: 0, fontSize: 18, fontWeight: 'bold', 'color': 'red' }, bodyStyle: { borderColor: '#e1e4e8', borderLineWidth: 0, fontSize: 16, color: '#4D4D4D', bgColor: '#FFF' } } },
+                taskListTable: {
+                    columns,
+                    tableWidth: 'auto',
+                    theme: { headerStyle: { borderColor: '#e1e4e8', borderLineWidth: 0, fontSize: 18, fontWeight: 'bold', 'color': 'red' }, bodyStyle: { borderColor: '#e1e4e8', borderLineWidth: 0, fontSize: 16, color: '#4D4D4D', bgColor: '#FFF' } },
+                    hierarchyIndent: 25, // 设置缩进宽度
+                    hierarchyExpandLevel: 2, // 默认只展开 2 层
+                },
                 frame: {
                   outerFrameStyle: { borderLineWidth: 0, borderColor: 'red', cornerRadius: 8 },
                   verticalSplitLine: {
@@ -263,8 +269,8 @@ const GanttChart = () => {
                     colWidth: 80,
                     scales: getScalesConfig(timeScale)
                 },
-                minDate: '2025-11-01',
-                maxDate: '2026-02-28',
+                minDate: '2025-10-15',
+                maxDate: '2025-11-15',
                 scrollStyle: { scrollRailColor: 'RGBA(246,246,246,0.5)', visible: 'focus', width: 6, scrollSliderCornerRadius: 2, scrollSliderColor: '#5cb85c' },
                 overscrollBehavior: 'none',
                 markLineCreateOptions: { markLineCreatable: true, markLineCreationHoverToolTip: { position: 'top', tipContent: '创建里程碑', style: { contentStyle: { fill: '#fff' }, panelStyle: { background: '#14161c', cornerRadius: 4 } } }, markLineCreationStyle: { fill: '#ccc', size: 30, iconSize: 12, svg: simplePlusIcon } }
@@ -298,8 +304,8 @@ const GanttChart = () => {
                             if (node.id === id) {
                                 return { ...node, ...changedData };
                             }
-                            if (node.sub) {
-                                return { ...node, sub: updateNode(node.sub) };
+                            if (node.children) {
+                                return { ...node, children: updateNode(node.children) };
                             }
                             return node;
                         });
