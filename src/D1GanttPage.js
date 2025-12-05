@@ -151,6 +151,7 @@ const GanttChart = () => {
     const [markLines, setMarkLines] = useState([]);
     const [timeScale, setTimeScale] = useState('day');
     const [isLoading, setIsLoading] = useState(false);
+    const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0, record: null });
 
     // 1. Fetch data for the specific store
     const fetchData = async () => {
@@ -188,6 +189,13 @@ const GanttChart = () => {
     useEffect(() => {
         fetchData();
     }, [storeId]);
+
+    // Close context menu on any click
+    useEffect(() => {
+        const handleClick = () => setContextMenu({ visible: false, x: 0, y: 0, record: null });
+        window.addEventListener('click', handleClick);
+        return () => window.removeEventListener('click', handleClick);
+    }, []);
 
     // This useEffect handles the INITIALIZATION of the Gantt chart instance.
     // It runs only ONCE when the component mounts.
@@ -369,11 +377,25 @@ const GanttChart = () => {
                 console.log("EVENT: `change_task` (drag/resize) fired. Staging changes.");
                 setRecords(newRecords);
             };
+
+            const handleContextMenu = (args) => {
+                args.event.preventDefault(); // Prevent default browser menu
+                const record = instanceRef.current.getRecordByCell(args.col, args.row);
+                if (record) {
+                    setContextMenu({
+                        visible: true,
+                        x: args.event.clientX,
+                        y: args.event.clientY,
+                        record: record
+                    });
+                }
+            };
     
             ganttInstance.on('click_markline_create', handleMarkLineCreate);
             ganttInstance.on('click_markline_content', handleMarkLineClick);
             ganttInstance.on('change_task', handleTaskChange);
             ganttInstance.on('after_edit_cell', handleCellEdit); // Register the new handler
+            ganttInstance.on('contextmenu_cell', handleContextMenu);
         }
 
         return () => {
@@ -434,8 +456,57 @@ const GanttChart = () => {
         }
     };
 
+    const handleAddTask = async (parentId = null) => {
+        const newTask = {
+            title: parentId ? "新子任务" : "新任务",
+            start: formatDate(new Date()),
+            end: formatDate(new Date(new Date().setDate(new Date().getDate() + 1))),
+            progress: 0,
+            parent_id: parentId
+        };
+        setIsLoading(true);
+        try {
+            const result = await apiCall('task/add', 'POST', { task: newTask, storeId });
+            if (result.success) {
+                message.success('任务添加成功');
+                await fetchData(); // Easiest way to ensure tree is correct
+            } else {
+                message.error('添加失败: ' + (result.error || '未知错误'));
+            }
+        } catch (e) {
+            message.error('添加失败: ' + e.message);
+        } finally {
+            setIsLoading(false);
+            if (contextMenu.visible) {
+                setContextMenu({ visible: false, x: 0, y: 0, record: null });
+            }
+        }
+    };
+
     return (
         <div style={{ height: '100%', width: '100%', display: 'flex', flexDirection: 'column', position: 'relative' }}>
+            {contextMenu.visible && (
+                <div 
+                    style={{
+                        position: 'absolute',
+                        top: contextMenu.y,
+                        left: contextMenu.x,
+                        background: 'white',
+                        border: '1px solid #ccc',
+                        borderRadius: '4px',
+                        boxShadow: '0 2px 10px rgba(0,0,0,0.2)',
+                        zIndex: 1001,
+                        padding: '5px 0'
+                    }}
+                >
+                    <div 
+                        style={{ padding: '8px 15px', cursor: 'pointer' }} 
+                        onClick={() => handleAddTask(contextMenu.record.id)}
+                    >
+                        新增子任务
+                    </div>
+                </div>
+            )}
             <div style={{ padding: '10px', borderBottom: '1px solid #eee', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <Space>
                     <span>时间粒度：</span>
@@ -455,28 +526,7 @@ const GanttChart = () => {
                         {isLoading ? '正在刷新...' : '刷新同步数据'}
                     </Button>
                     <Button
-                        onClick={async () => {
-                            const newTask = {
-                                title: "新任务",
-                                start: formatDate(new Date()),
-                                end: formatDate(new Date(new Date().setDate(new Date().getDate() + 1))),
-                                progress: 0
-                            };
-                            setIsLoading(true);
-                            try {
-                                const result = await apiCall('task/add', 'POST', { task: newTask, storeId });
-                                if (result.success) {
-                                    message.success('任务添加成功');
-                                    setRecords(prev => [...prev, result.task]);
-                                } else {
-                                    message.error('添加失败: ' + (result.error || '未知错误'));
-                                }
-                            } catch (e) {
-                                message.error('添加失败: ' + e.message);
-                            } finally {
-                                setIsLoading(false);
-                            }
-                        }}
+                        onClick={() => handleAddTask(null)}
                         disabled={isLoading}
                     >
                         新增任务
