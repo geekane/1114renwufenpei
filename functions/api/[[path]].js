@@ -41,8 +41,18 @@ export async function onRequest(context) {
         env.DB.prepare('DELETE FROM gantt_tasks WHERE store_id = ?').bind(storeId),
         // 2. Prepare insert statements for all new tasks
         ...flatRecords.map(rec => env.DB.prepare(
-          'INSERT INTO gantt_tasks (id, parent_id, title, start, end, progress, avatar, store_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
-        ).bind(rec.id, rec.parent_id, rec.title, rec.start, rec.end, rec.progress, rec.avatar, storeId))
+          'INSERT INTO gantt_tasks (id, parent_id, title, start, end, progress, avatar, store_id, is_completed) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+        ).bind(
+          rec.id, 
+          rec.parent_id, 
+          rec.title, 
+          rec.start, 
+          rec.end, 
+          rec.progress, 
+          rec.avatar, 
+          storeId,
+          rec.is_completed ? 1 : 0 
+        ))
       ];
       
       // Execute all statements in a single transaction
@@ -163,13 +173,24 @@ export async function onRequest(context) {
         progress: task.progress || 0,
         avatar: task.avatar || 'https://lf9-dp-fe-cms-tos.byteorg.com/obj/bit-cloud/VTable/custom-render/question.jpeg',
         store_id: storeId,
-        parent_id: task.parent_id || null // New tasks are root tasks by default
+        parent_id: task.parent_id || null,
+        is_completed: 0
       };
 
       const stmt = env.DB.prepare(
-        'INSERT INTO gantt_tasks (id, title, start, end, progress, avatar, store_id, parent_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+        'INSERT INTO gantt_tasks (id, title, start, end, progress, avatar, store_id, parent_id, is_completed) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
       );
-      await stmt.bind(newTask.id, newTask.title, newTask.start, newTask.end, newTask.progress, newTask.avatar, newTask.store_id, newTask.parent_id).run();
+      await stmt.bind(
+        newTask.id, 
+        newTask.title, 
+        newTask.start, 
+        newTask.end, 
+        newTask.progress, 
+        newTask.avatar, 
+        newTask.store_id, 
+        newTask.parent_id,
+        newTask.is_completed 
+      ).run();
 
       return jsonResponse({ success: true, task: newTask });
 
