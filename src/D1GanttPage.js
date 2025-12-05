@@ -202,9 +202,27 @@ const GanttChart = () => {
     useEffect(() => {
         if (containerRef.current && !instanceRef.current) {
             console.log("EVENT: Component mounted. INITIALIZING Gantt Chart instance...");
-            const barColors0 = ['#aecde6', '#c6a49a', '#ffb582', '#eec1de', '#b3d9b3', '#cccccc', '#e59a9c', '#d9d1a5', '#c9bede'];
-            const barColors = ['#1f77b4', '#8c564b', '#ff7f0e', '#e377c2', '#2ca02c', '#7f7f7f', '#d62728', '#bcbd22', '#9467bd'];
             
+            // 根据进度获取对应的渐变色组合
+            const getProgressColors = (progress) => {
+                const p = Number(progress || 0);
+                
+                // 1. 完成 (100%): 绿色系
+                if (p >= 100) {
+                    return { light: '#b3d9b3', dark: '#2ca02c' };
+                }
+                // 2. 推进良好 (60% - 99%): 蓝色系
+                if (p >= 60) {
+                    return { light: '#aecde6', dark: '#1f77b4' };
+                }
+                // 3. 有进展 (30% - 59%): 橙色系
+                if (p >= 30) {
+                    return { light: '#ffb582', dark: '#ff7f0e' };
+                }
+                // 4. 起步/滞后 (0% - 29%): 红色/粉色系
+                return { light: '#e59a9c', dark: '#d62728' };
+            };
+
             const inputEditor = new InputEditor();
             VTable.register.editor('input-editor', inputEditor);
             const dateEditor = new DateInputEditor();
@@ -224,6 +242,7 @@ const GanttChart = () => {
                 taskListTable: {
                     columns,
                     tableWidth: 'auto',
+                    minTableWidth: 300,
                     theme: { headerStyle: { borderColor: '#e1e4e8', borderLineWidth: 0, fontSize: 18, fontWeight: 'bold', 'color': 'red' }, bodyStyle: { borderColor: '#e1e4e8', borderLineWidth: 0, fontSize: 16, color: '#4D4D4D', bgColor: '#FFF' } },
                     hierarchyIndent: 25, // 设置缩进宽度
                     hierarchyExpandLevel: 2, // 默认只展开 2 层
@@ -249,24 +268,53 @@ const GanttChart = () => {
                   draggable: true,
                   resizable: true,
                   customLayout: args => {
-                    const colorLength = barColors.length;
-                    const { width, height, index, taskRecord } = args;
-                    const container = new VTableGantt.VRender.Group({ width, height, cornerRadius: 30, fill: { gradient: 'linear', x0: 0, y0: 0, x1: 1, y1: 0, stops: [{ offset: 0, color: barColors0[index % colorLength] }, { offset: 0.5, color: barColors[index % colorLength] }, { offset: 1, color: barColors0[index % colorLength] }] }, display: 'flex', flexDirection: 'row', flexWrap: 'nowrap' });
+                    const { width, height, taskRecord } = args; // 不需要 index 了
+        
+                    // 1. 【核心修改】根据当前任务的 progress 获取颜色
+                    const colors = getProgressColors(taskRecord.progress);
+            
+                    // 2. 使用获取到的 colors.light 和 colors.dark 构建渐变
+                    const container = new VTableGantt.VRender.Group({
+                        width,
+                        height,
+                        cornerRadius: 30,
+                        fill: {
+                            gradient: 'linear',
+                            x0: 0, y0: 0, x1: 1, y1: 0,
+                            stops: [
+                                { offset: 0, color: colors.light },   // 浅色
+                                { offset: 0.5, color: colors.dark },  // 深色
+                                { offset: 1, color: colors.light }    // 浅色
+                            ]
+                        },
+                        display: 'flex',
+                        flexDirection: 'row',
+                        flexWrap: 'nowrap'
+                    });
+            
+                    // ... 下面的代码保持不变 (头像、文字等) ...
                     const containerLeft = new VTableGantt.VRender.Group({ height, width: 60, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'space-around' });
                     container.add(containerLeft);
-                    const avatar = new VTableGantt.VRender.Image({ width: 50, height: 50, image: taskRecord.avatar, cornerRadius: 25 });
+                    
+                    // 这里的 avatar 如果没有值，建议给一个默认图，防止报错
+                    const avatarUrl = taskRecord.avatar || 'https://lf9-dp-fe-cms-tos.byteorg.com/obj/bit-cloud/VTable/custom-render/question.jpeg';
+                    const avatar = new VTableGantt.VRender.Image({ width: 50, height: 50, image: avatarUrl, cornerRadius: 25 });
                     containerLeft.add(avatar);
+            
                     const containerCenter = new VTableGantt.VRender.Group({ height, width: width - (width >= 120 ? 120 : 60), display: 'flex', flexDirection: 'column' });
                     container.add(containerCenter);
+                    
                     const titleText = new VTableGantt.VRender.Text({ text: taskRecord.title, fontSize: 16, fontFamily: 'sans-serif', fill: 'white', fontWeight: 'bold', maxLineWidth: width - (width >= 120 ? 120 : 60), boundsPadding: [10, 0, 0, 0] });
                     containerCenter.add(titleText);
+                    
                     const days = new VTableGantt.VRender.Text({ text: `${args.taskDays}天`, fontSize: 13, fontFamily: 'sans-serif', fill: 'white', boundsPadding: [10, 0, 0, 0] });
                     containerCenter.add(days);
+            
                     if (width >= 120) {
-                      const containerRight = new VTableGantt.VRender.Group({ cornerRadius: 20, fill: 'white', height: 40, width: 40, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', boundsPadding: [10, 0, 0, 0] });
-                      container.add(containerRight);
-                      const progressText = new VTableGantt.VRender.Text({ text: `${args.progress}%`, fontSize: 12, fontFamily: 'sans-serif', fill: 'black', alignSelf: 'center', fontWeight: 'bold', maxLineWidth: (width - 60) / 2, boundsPadding: [0, 0, 0, 0] });
-                      containerRight.add(progressText);
+                        const containerRight = new VTableGantt.VRender.Group({ cornerRadius: 20, fill: 'white', height: 40, width: 40, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', boundsPadding: [10, 0, 0, 0] });
+                        container.add(containerRight);
+                        const progressText = new VTableGantt.VRender.Text({ text: `${taskRecord.progress || 0}%`, fontSize: 12, fontFamily: 'sans-serif', fill: 'black', alignSelf: 'center', fontWeight: 'bold', maxLineWidth: (width - 60) / 2, boundsPadding: [0, 0, 0, 0] });
+                        containerRight.add(progressText);
                     }
                     return { rootContainer: container };
                   },
