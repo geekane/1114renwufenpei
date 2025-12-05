@@ -21,19 +21,34 @@ export async function onRequest(context) {
         return jsonResponse({ error: 'Invalid data format, expected { records: [], storeId: "..." }' }, 400);
       }
 
+      // Helper to flatten the nested records into a list, assigning parent_id
+      const flattenRecords = (records, parentId = null) => {
+        let flatList = [];
+        records.forEach(rec => {
+          const { children, ...rest } = rec;
+          flatList.push({ ...rest, parent_id: parentId });
+          if (children && children.length > 0) {
+            flatList = flatList.concat(flattenRecords(children, rec.id));
+          }
+        });
+        return flatList;
+      };
+
+      const flatRecords = flattenRecords(records);
+
       const statements = [
         // 1. Delete all existing tasks for the given storeId
         env.DB.prepare('DELETE FROM gantt_tasks WHERE store_id = ?').bind(storeId),
         // 2. Prepare insert statements for all new tasks
-        ...records.map(rec => env.DB.prepare(
-          'INSERT INTO gantt_tasks (id, title, start, end, progress, avatar, store_id) VALUES (?, ?, ?, ?, ?, ?, ?)'
-        ).bind(rec.id, rec.title, rec.start, rec.end, rec.progress, rec.avatar, storeId))
+        ...flatRecords.map(rec => env.DB.prepare(
+          'INSERT INTO gantt_tasks (id, parent_id, title, start, end, progress, avatar, store_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+        ).bind(rec.id, rec.parent_id, rec.title, rec.start, rec.end, rec.progress, rec.avatar, storeId))
       ];
       
       // Execute all statements in a single transaction
       await env.DB.batch(statements);
 
-      return jsonResponse({ success: true, message: `Successfully saved ${records.length} tasks for store ${storeId}.` });
+      return jsonResponse({ success: true, message: `Successfully saved ${flatRecords.length} tasks for store ${storeId}.` });
 
     } catch (e) {
       console.error('Error saving tasks to D1:', e);
@@ -55,7 +70,7 @@ export async function onRequest(context) {
           throw new Error("D1 database binding 'DB' not found. Check wrangler.toml.");
       }
 
-      const tasksStmt = env.DB.prepare('SELECT * FROM gantt_tasks WHERE store_id = ?').bind(storeId);
+      const tasksStmt = env.DB.prepare('SELECT * FROM gantt_tasks WHERE store_id = ? ORDER BY start').bind(storeId);
       const marklinesStmt = env.DB.prepare('SELECT * FROM gantt_marklines WHERE store_id = ?').bind(storeId);
       console.log("Statements prepared. Executing batch...");
 
@@ -63,15 +78,43 @@ export async function onRequest(context) {
       console.log("D1 batch execution complete.");
       console.log(`Found ${tasksResult.results.length} tasks and ${marklinesResult.results.length} marklines for store ${storeId}.`);
 
-      // Parse JSON strings back into objects for the frontend
-      const marklines = marklinesResult.results.map(line => ({
+      const tasks = tasksResult.results || [];
+      const marklines = (marklinesResult.results || []).map(line => ({
         ...line,
         style: JSON.parse(line.style || '{}'),
         contentStyle: JSON.parse(line.contentStyle || '{}'),
       }));
+      
+      // Build tree structure from flat list
+      const taskMap = new Map(tasks.map(t => [t.id, { ...t, children: [] }]));
+      const tree = [];
+      tasks.forEach(task => {
+        if (task.parent_id && taskMap.has(task.parent_id)) {
+          const parent = taskMap.get(task.parent_id);
+          // Ensure children array exists
+          if (!parent.children) {
+            parent.children = [];
+          }
+          parent.children.push(taskMap.get(task.id));
+        } else {
+          tree.push(taskMap.get(task.id));
+        }
+      });
+
+      // Clean up empty children arrays to avoid rendering expander icons for leaf nodes
+      const cleanTree = (nodes) => {
+        return nodes.map(node => {
+          if (node.children && node.children.length > 0) {
+            node.children = cleanTree(node.children);
+          } else {
+            delete node.children;
+          }
+          return node;
+        });
+      };
 
       return jsonResponse({
-        records: tasksResult.results,
+        records: cleanTree(tree),
         markLines: marklines,
       });
     } catch (e) {
@@ -110,15 +153,20 @@ export async function onRequest(context) {
         end: task.end,
         progress: task.progress || 0,
         avatar: task.avatar || 'https://lf9-dp-fe-cms-tos.byteorg.com/obj/bit-cloud/VTable/custom-render/question.jpeg',
-        store_id: storeId
+        store_id: storeId,
+        parent_id: task.parent_id || null // New tasks are root tasks by default
       };
 
       const stmt = env.DB.prepare(
-        'INSERT INTO gantt_tasks (id, title, start, end, progress, avatar, store_id) VALUES (?, ?, ?, ?, ?, ?, ?)'
+        'INSERT INTO gantt_tasks (id, title, start, end, progress, avatar, store_id, parent_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
       );
-      await stmt.bind(newTask.id, newTask.title, newTask.start, newTask.end, newTask.progress, newTask.avatar, newTask.store_id).run();
+      await stmt.bind(newTask.id, newTask.title, newTask.start, newTask.end, newTask.progress, newTask.avatar, newTask.store_id, newTask.parent_id).run();
 
-      return jsonResponse({ success: true, task: newTask });
+      // Return the task without the parent_id if it's a root, or with it if it's a child.
+      // For a new root task, the frontend doesn't need parent_id.
+      const { parent_id, ...taskForClient } = newTask;
+
+      return jsonResponse({ success: true, task: taskForClient });
 
     } catch (e) {
       console.error('Error adding task to D1:', e);
