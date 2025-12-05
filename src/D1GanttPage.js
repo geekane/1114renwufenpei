@@ -14,21 +14,25 @@ function formatDate(date) {
 }
 
 // 根据进度返回颜色配置
-// 0-29%: 红色 (滞后/刚开始)
-// 30-59%: 橙色 (进行中)
-// 60-99%: 蓝色 (良好)
-// 100%: 绿色 (完成)
 function getProgressColorConfig(progress) {
-  const p = Number(progress) || 0;
+  // 1. 使用 parseFloat 解析，可以处理 "18%"、"18"、0.18 等情况
+  // 注意：如果你的数据是小数(0.5)，需要乘以100；如果是整数(50)，直接用。
+  // 假设你的数据是 0-100 的数值或 "0"-"100" 的字符串
+  let p = parseFloat(progress);
   
+  if (isNaN(p)) p = 0;
+
+  // 调试日志：按 F12 看控制台，检查 p 到底是多少
+  // console.log('Parsed Progress:', p, 'Original:', progress);
+
   if (p >= 100) {
-    return { main: '#10b981', bg: '#d1fae5' }; // Green
+    return { main: '#10b981', bg: '#d1fae5' }; // 绿色 (完成)
   } else if (p >= 60) {
-    return { main: '#3b82f6', bg: '#dbeafe' }; // Blue
+    return { main: '#3b82f6', bg: '#dbeafe' }; // 蓝色 (良好)
   } else if (p >= 30) {
-    return { main: '#f97316', bg: '#ffedd5' }; // Orange
+    return { main: '#f97316', bg: '#ffedd5' }; // 橙色 (进行中)
   } else {
-    return { main: '#ef4444', bg: '#fee2e2' }; // Red
+    return { main: '#ef4444', bg: '#fee2e2' }; // 红色 (滞后/刚开始)
   }
 }
 
@@ -274,26 +278,27 @@ const GanttChart = () => {
                     labelText: '{title} ({progress}%)',
                     labelTextStyle: {
                       fontFamily: 'Arial, sans-serif',
-                      fontSize: 12,
+                      fontSize: 14, // 稍微加大字体
                       textAlign: 'left',
                       color: '#24292f'
                     },
                     barStyle: {
-                      width: 24,
+                      width: 50, // 【修改点1】加大高度，配合 rowHeight: 80
                       cornerRadius: 6,
                       borderWidth: 1,
                       borderColor: '#e5e7eb',
                 
-                      // 1. 设置未完成部分的底色 (bg)
+                      // 【修改点2】设置未完成部分的底色 (bg)
                       barColor: (args) => {
-                        const progress = args.taskRecord.progress;
-                        return getProgressColorConfig(progress).bg;
+                        // 确保能取到 record
+                        const record = args.taskRecord || args; 
+                        return getProgressColorConfig(record.progress).bg;
                       },
                       
-                      // 2. 设置已完成部分的颜色 (main)
+                      // 【修改点3】设置已完成部分的颜色 (main)
                       completedBarColor: (args) => {
-                        const progress = args.taskRecord.progress;
-                        return getProgressColorConfig(progress).main;
+                        const record = args.taskRecord || args;
+                        return getProgressColorConfig(record.progress).main;
                       }
                     },
                     progressAdjustable: true
