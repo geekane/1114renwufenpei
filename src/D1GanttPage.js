@@ -13,31 +13,6 @@ function formatDate(date) {
     return year + '-' + month + '-' + day;
 }
 
-// 根据进度返回颜色配置
-function getProgressColorConfig(progress) {
-  // 1. 使用 parseFloat 解析，可以处理 "18%"、"18"、0.18 等情况
-  let p = parseFloat(progress);
-  
-  if (isNaN(p)) p = 0;
-
-  // 智能修正：如果进度是 0.8 这种小数，自动转为 80
-  if (p <= 1 && p > 0) {
-      p = p * 100;
-  }
-  
-  // console.log(`[Debug] Task Progress: ${progress}, Parsed: ${p}`);
-
-  if (p >= 100) {
-    return { main: '#10b981', bg: '#d1fae5' }; // 绿色 (完成)
-  } else if (p >= 60) {
-    return { main: '#3b82f6', bg: '#dbeafe' }; // 蓝色 (良好)
-  } else if (p >= 30) {
-    return { main: '#f97316', bg: '#ffedd5' }; // 橙色 (进行中)
-  } else {
-    return { main: '#ef4444', bg: '#fee2e2' }; // 红色 (滞后/刚开始)
-  }
-}
-
 function createPopup({ date, content }, position, callback) {
     let container = document.getElementById('live-demo-additional-container');
     if (!container) {
@@ -123,13 +98,15 @@ const getScalesConfig = (scaleType) => {
                     unit: 'month',
                     step: 1,
                     format: (context) => `${context.startDate.getFullYear()}年 ${context.startDate.getMonth() + 1}月`,
-                    style: { textStick: true, fontSize: 14, fontWeight: 'bold', color: '#333' }
+                    style: { textStick: true, fontSize: 14, fontWeight: 'bold', color: '#111827' }
                 },
                 {
                     unit: 'week',
                     step: 1,
-                    format: (context) => `第${context.dateIndex}周`,
-                    style: { fontSize: 12, color: '#666' }
+                    format(date) {
+                      return `第 ${date.dateIndex} 周`;
+                    },
+                    style: { fontSize: 12, color: '#374151' }
                 }
             ];
         case 'month':
@@ -138,13 +115,13 @@ const getScalesConfig = (scaleType) => {
                     unit: 'year',
                     step: 1,
                     format: (context) => `${context.startDate.getFullYear()}年`,
-                    style: { textStick: true, fontSize: 16, fontWeight: 'bold', color: '#333' }
+                    style: { textStick: true, fontSize: 16, fontWeight: 'bold', color: '#111827' }
                 },
                 {
                     unit: 'month',
                     step: 1,
                     format: (context) => `${context.startDate.getMonth() + 1}月`,
-                    style: { fontSize: 14, color: '#555' }
+                    style: { fontSize: 14, color: '#374151' }
                 }
             ];
         case 'day':
@@ -154,13 +131,13 @@ const getScalesConfig = (scaleType) => {
                     unit: 'month',
                     step: 1,
                     format: (context) => `${context.startDate.getFullYear()}年 ${context.startDate.getMonth() + 1}月`,
-                    style: { textStick: true, fontSize: 14, fontWeight: 'bold', color: '#333', textAlign: 'center' }
+                    style: { textStick: true, fontSize: 14, fontWeight: 'bold', color: '#111827', textAlign: 'center' }
                 },
                 {
                     unit: 'day',
                     step: 1,
-                    format: (date) => `${date.dateIndex}\n${getChineseWeekday(date.startDate)}`,
-                    style: { textAlign: 'center', lineHeight: 20, fontSize: 12 }
+                    format: (date) => date.dateIndex.toString(),
+                    style: { fontSize: 14, color: '#374151', textAlign: 'center' }
                 }
             ];
     }
@@ -214,9 +191,10 @@ const GanttChart = () => {
             VTable.register.editor('date-editor', dateEditor);
 
             const columns = [
-                { field: 'title', title: '任务', width: 150, editor: 'input-editor', tree: true },
-                { field: 'start', title: '开始时间', width: 120, editor: 'date-editor' },
-                { field: 'end', title: '结束时间', width: 120, editor: 'date-editor' }
+              { field: 'title', title: '任务名称', width: 120, sort: true, tree: true, editor: 'input-editor' },
+              { field: 'start', title: '开始日期', width: 100, sort: true, editor: 'date-editor' },
+              { field: 'end', title: '结束日期', width: 100, sort: true, editor: 'date-editor' },
+              { field: 'progress', title: '进度', width: 80, sort: true, editor: 'input-editor' },
             ];
 
             const today = new Date();
@@ -227,21 +205,42 @@ const GanttChart = () => {
                 records,
                 markLine: markLines,
                 taskListTable: {
-                    columns,
-                    tableWidth: 'auto',
+                    columns: columns,
+                    tableWidth: 500,
                     minTableWidth: 300,
-                    theme: { headerStyle: { borderColor: '#e1e4e8', borderLineWidth: 0, fontSize: 18, fontWeight: 'bold', color: 'red' }, bodyStyle: { borderColor: '#e1e4e8', borderLineWidth: 0, fontSize: 16, color: '#4D4D4D', bgColor: '#FFF' } },
+                    maxTableWidth: 800,
                     hierarchyIndent: 25,
                     hierarchyExpandLevel: 2,
                 },
+                tasksShowMode: 'tasks_separate',
                 frame: {
-                  outerFrameStyle: { borderLineWidth: 0, borderColor: 'red', cornerRadius: 8 },
-                  verticalSplitLine: { lineColor: '#d5d9ee', lineWidth: 2, visible: true },
-                  verticalSplitLineHighlight: { lineColor: '#1677ff', lineWidth: 3, visible: true }
+                    verticalSplitLineMoveable: true,
+                    outerFrameStyle: {
+                      borderLineWidth: 1,
+                      borderColor: '#e5e7eb',
+                      cornerRadius: 8
+                    },
+                    verticalSplitLine: {
+                      lineWidth: 2,
+                      lineColor: '#d1d5db'
+                    },
+                    verticalSplitLineHighlight: {
+                      lineColor: '#3b82f6',
+                      lineWidth: 2
+                    }
                 },
-                grid: { backgroundColor: '#f0f0fb', horizontalLine: { lineWidth: 2, lineColor: '#d5d9ee' } },
-                headerRowHeight: 80,
-                rowHeight: 80,
+                grid: {
+                    verticalLine: {
+                      lineWidth: 1,
+                      lineColor: '#f3f4f6'
+                    },
+                    horizontalLine: {
+                      lineWidth: 1,
+                      lineColor: '#f3f4f6'
+                    }
+                },
+                headerRowHeight: 50,
+                rowHeight: 35,
                 taskBar: {
                     selectable: true,
                     startDateField: 'start',
@@ -250,40 +249,53 @@ const GanttChart = () => {
                     labelText: '{title} ({progress}%)',
                     labelTextStyle: {
                       fontFamily: 'Arial, sans-serif',
-                      fontSize: 14,
+                      fontSize: 12,
                       textAlign: 'left',
                       color: '#24292f'
                     },
                     barStyle: {
-                      width: 50,
+                      width: 24,
+                      barColor: '#3b82f6',
+                      completedBarColor: '#10b981',
                       cornerRadius: 6,
                       borderWidth: 1,
-                      borderColor: '#e5e7eb',
-                      barColor: (args) => {
-                        const record = args.taskRecord || args;
-                        console.log(`[Debug BarColor] Task: ${record.title}`, {
-                            rawProgress: record.progress,
-                            type: typeof record.progress,
-                            parsedColor: getProgressColorConfig(record.progress)
-                        });
-                        return getProgressColorConfig(record.progress).bg;
-                      },
-                      completedBarColor: (args) => {
-                        const record = args.taskRecord || args;
-                        return getProgressColorConfig(record.progress).main;
-                      }
+                      borderColor: '#e5e7eb'
                     },
                     progressAdjustable: true
                 },
                 timelineHeader: {
-                    backgroundColor: '#f0f0fb',
-                    colWidth: 80,
+                    verticalLine: {
+                      lineWidth: 1,
+                      lineColor: '#d1d5db'
+                    },
+                    horizontalLine: {
+                      lineWidth: 1,
+                      lineColor: '#d1d5db'
+                    },
+                    backgroundColor: '#f9fafb',
+                    colWidth: 40,
                     scales: getScalesConfig(timeScale)
                 },
                 minDate: formatDate(today),
                 maxDate: formatDate(maxDate),
-                scrollStyle: { scrollRailColor: 'RGBA(246,246,246,0.5)', visible: 'focus', width: 6, scrollSliderCornerRadius: 2, scrollSliderColor: '#5cb85c' },
-                overscrollBehavior: 'none',
+                rowSeriesNumber: {
+                    title: '#',
+                    width: 50,
+                    headerStyle: {
+                      bgColor: '#f9fafb',
+                      borderColor: '#d1d5db'
+                    },
+                    style: {
+                      borderColor: '#d1d5db'
+                    }
+                },
+                scrollStyle: {
+                    visible: 'scrolling',
+                    width: 8,
+                    scrollRailColor: '#f3f4f6',
+                    scrollSliderColor: '#d1d5db'
+                },
+                overscrollBehavior: 'none'
             };
 
             const ganttInstance = new VTableGantt.Gantt(containerRef.current, option);
@@ -358,7 +370,9 @@ const GanttChart = () => {
     }, [markLines]);
 
     useEffect(() => {
-        if (instanceRef.current) instanceRef.current.updateScales(getScalesConfig(timeScale));
+        if (instanceRef.current) {
+            instanceRef.current.updateScales(getScalesConfig(timeScale));
+        }
     }, [timeScale]);
 
     const handleRefresh = () => fetchData();
