@@ -331,27 +331,35 @@ const GanttChart = () => {
 
             // --- 事件监听 ---
 
-            // 1. Checkbox
+            // 1. Checkbox 状态变更逻辑 (核心修复)
             ganttInstance.on('checkbox_state_change', (args) => {
                 const { col, row, checked } = args;
                 const record = instanceRef.current.getRecordByCell(col, row);
+                
                 if (record) {
+                    console.log(`[Checkbox] ID: ${record.id}, Title: ${record.title} -> Checked: ${checked}`);
+                    
                     setRecords(prev => {
                         const updateRecursive = (nodes) => {
                             return nodes.map(node => {
-                                if (node.id === record.id) {
+                                // 强制转为字符串比对，防止 ID 类型不一致导致匹配失败
+                                if (String(node.id) === String(record.id)) {
                                     return { 
                                         ...node, 
-                                        is_completed: checked,
-                                        progress: checked ? 100 : node.progress
+                                        is_completed: checked, // 更新勾选状态
+                                        progress: checked ? 100 : node.progress // 体验优化：勾选自动设为 100%
                                     };
                                 }
-                                if (node.children) return { ...node, children: updateRecursive(node.children) };
+                                if (node.children && node.children.length > 0) {
+                                    return { ...node, children: updateRecursive(node.children) };
+                                }
                                 return node;
                             });
                         };
                         return updateRecursive(prev);
                     });
+                } else {
+                    console.warn("[Checkbox] Clicked but no record found.");
                 }
             });
 
@@ -451,7 +459,7 @@ const GanttChart = () => {
     const handleSaveChanges = async () => {
         setIsLoading(true);
         try {
-            console.log("Saving records:", records);
+            console.log("Saving records to cloud:", records); // 调试日志
             const result = await apiCall('tasks', 'POST', { records, storeId });
             if (result.success) message.success('更改已成功保存');
             else message.error('保存失败: ' + (result.error?.message || '未知错误'));
@@ -506,7 +514,6 @@ const GanttChart = () => {
             
             <div style={{ padding: '10px', borderBottom: '1px solid #eee', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <Space>
-                   {/* 移除了时间粒度切换，因为TimelineHeader写死了week/day，如需动态切换需要再把state加回来 */}
                    <span style={{fontWeight:'bold'}}>项目排期表</span>
                 </Space>
                 <Space>
