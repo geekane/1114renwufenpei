@@ -154,295 +154,239 @@ const GanttChart = () => {
         return () => window.removeEventListener('click', handleClick);
     }, []);
 
-    // Initialize Gantt Instance
-    useEffect(() => {
-        if (containerRef.current && !instanceRef.current) {
-            console.log("Initializing Gantt Instance with simple theme...");
+// Initialize Gantt Instance
+useEffect(() => {
+    if (containerRef.current && !instanceRef.current) {
+        console.log("Initializing Gantt Instance...");
+        
+        // Register Editors
+        const inputEditor = new InputEditor();
+        VTable.register.editor('input-editor', inputEditor);
+        const dateEditor = new DateInputEditor();
+        VTable.register.editor('date-editor', dateEditor);
+
+        // Columns 配置
+        const columns = [
+            {
+                field: 'is_completed',
+                title: '✓',
+                width: 40,
+                cellType: 'checkbox',
+                style: { textAlign: 'center' }
+            },
+            {
+                field: 'title',
+                title: '任务名称',
+                width: 200,
+                sort: true,
+                tree: true,
+                editor: 'input-editor'
+            },
+            {
+                field: 'start',
+                title: '开始日期',
+                width: 100,
+                sort: true,
+                editor: 'date-editor'
+            },
+            {
+                field: 'end',
+                title: '结束日期',
+                width: 100,
+                sort: true,
+                editor: 'date-editor'
+            },
+            {
+                field: 'progress',
+                title: '进度',
+                width: 80,
+                sort: true,
+                headerStyle: { borderColor: '#e1e4e8' },
+                style: { borderColor: '#e1e4e8', color: 'green' }
+            }
+        ];
+
+        const today = new Date();
+        const maxDate = new Date();
+        maxDate.setMonth(today.getMonth() + 2);
+
+        const option = {
+            records: [], 
+            markLine: [],
+            taskListTable: {
+                columns: columns,
+                tableWidth: 'auto',
+                minTableWidth: 350,
+                maxTableWidth: 800
+            },
+            tasksShowMode: 'tasks_separate',
+            frame: {
+                verticalSplitLineMoveable: true,
+                outerFrameStyle: { borderLineWidth: 1, borderColor: '#e5e7eb', cornerRadius: 8 },
+                verticalSplitLine: { lineWidth: 2, lineColor: '#d1d5db' },
+                verticalSplitLineHighlight: { lineColor: '#3b82f6', lineWidth: 2 }
+            },
+            grid: {
+                verticalLine: { lineWidth: 1, lineColor: '#f3f4f6' },
+                horizontalLine: { lineWidth: 1, lineColor: '#f3f4f6' }
+            },
+            headerRowHeight: 50,
+            rowHeight: 35,
+            taskBar: {
+                selectable: true,
+                startDateField: 'start',
+                endDateField: 'end',
+                progressField: 'progress',
+                labelText: '{title} ({progress}%)',
+                labelTextStyle: { fontFamily: 'Arial, sans-serif', fontSize: 12, textAlign: 'left', color: '#24292f' },
+                barStyle: {
+                    width: 24,
+                    barColor: '#3b82f6',
+                    completedBarColor: '#10b981',
+                    cornerRadius: 6,
+                    borderWidth: 1,
+                    borderColor: '#e5e7eb'
+                },
+                progressAdjustable: true
+            },
+            timelineHeader: {
+                verticalLine: { lineWidth: 1, lineColor: '#d1d5db' },
+                horizontalLine: { lineWidth: 1, lineColor: '#d1d5db' },
+                backgroundColor: '#f9fafb',
+                colWidth: 40,
+                scales: [
+                    { unit: 'week', step: 1, startOfWeek: 'sunday', format(date) { return `第 ${date.dateIndex} 周`; }, style: { fontSize: 16, fontWeight: 'bold', color: '#111827', textAlign: 'center', backgroundColor: '#f9fafb' } },
+                    { unit: 'day', step: 1, format(date) { return date.dateIndex.toString(); }, style: { fontSize: 14, color: '#374151', textAlign: 'center', backgroundColor: '#f9fafb' } }
+                ]
+            },
+            minDate: formatDate(today),
+            maxDate: formatDate(maxDate),
+            rowSeriesNumber: { title: '#', width: 40, headerStyle: { bgColor: '#f9fafb', borderColor: '#d1d5db' }, style: { borderColor: '#d1d5db' } },
+            scrollStyle: { visible: 'scrolling', width: 8, scrollRailColor: '#f3f4f6', scrollSliderColor: '#d1d5db' },
+            overscrollBehavior: 'none'
+        };
+
+        const ganttInstance = new VTableGantt.Gantt(containerRef.current, option);
+        instanceRef.current = ganttInstance;
+
+        // --- 核心修复区：复选框事件监听 ---
+        ganttInstance.on('checkbox_state_change', (args) => {
+            const { col, row, checked } = args;
             
-            // Register Editors
-            const inputEditor = new InputEditor();
-            VTable.register.editor('input-editor', inputEditor);
-            const dateEditor = new DateInputEditor();
-            VTable.register.editor('date-editor', dateEditor);
-
-            // Columns 配置 (结合了您的新样式和我们的业务字段)
-            const columns = [
-                // 1. 完成状态勾选列
-                {
-                    field: 'is_completed',
-                    title: '✓',
-                    width: 40,
-                    cellType: 'checkbox',
-                    style: { textAlign: 'center' }
-                },
-                // 2. 任务名称
-                {
-                    field: 'title',
-                    title: '任务名称',
-                    width: 200,
-                    sort: true,
-                    tree: true,
-                    editor: 'input-editor'
-                },
-                // 3. 开始日期
-                {
-                    field: 'start',
-                    title: '开始日期',
-                    width: 100,
-                    sort: true,
-                    editor: 'date-editor'
-                },
-                // 4. 结束日期
-                {
-                    field: 'end',
-                    title: '结束日期',
-                    width: 100,
-                    sort: true,
-                    editor: 'date-editor'
-                },
-                // 5. 进度
-                {
-                    field: 'progress',
-                    title: '进度',
-                    width: 80,
-                    sort: true,
-                    headerStyle: { borderColor: '#e1e4e8' },
-                    style: { borderColor: '#e1e4e8', color: 'green' }
-                }
-            ];
-
-            const today = new Date();
-            const maxDate = new Date();
-            maxDate.setMonth(today.getMonth() + 2);
-
-            // --- 核心配置：使用您提供的简洁样式 ---
-            const option = {
-                records: [], 
-                markLine: [],
-                taskListTable: {
-                    columns: columns,
-                    tableWidth: 'auto', // 自适应
-                    minTableWidth: 350,
-                    maxTableWidth: 800
-                },
-                tasksShowMode: 'tasks_separate',
+            // 1. 获取当前点击的记录
+            const record = instanceRef.current.getRecordByCell(col, row);
+            
+            if (record) {
+                console.log(`[DEBUG] Checkbox Clicked! ID: ${record.id}, Checked: ${checked}`);
                 
-                // 样式：灰色边框风格
-                frame: {
-                    verticalSplitLineMoveable: true,
-                    outerFrameStyle: {
-                        borderLineWidth: 1,
-                        borderColor: '#e5e7eb',
-                        cornerRadius: 8
-                    },
-                    verticalSplitLine: {
-                        lineWidth: 2,
-                        lineColor: '#d1d5db'
-                    },
-                    verticalSplitLineHighlight: {
-                        lineColor: '#3b82f6',
-                        lineWidth: 2
-                    }
-                },
-                grid: {
-                    verticalLine: {
-                        lineWidth: 1,
-                        lineColor: '#f3f4f6'
-                    },
-                    horizontalLine: {
-                        lineWidth: 1,
-                        lineColor: '#f3f4f6'
-                    }
-                },
-                
-                // 尺寸：紧凑型
-                headerRowHeight: 50,
-                rowHeight: 35, // 变矮了
-                
-                // 任务条样式：简单的蓝绿配色
-                taskBar: {
-                    selectable: true,
-                    startDateField: 'start',
-                    endDateField: 'end',
-                    progressField: 'progress',
-                    labelText: '{title} ({progress}%)',
-                    labelTextStyle: {
-                        fontFamily: 'Arial, sans-serif',
-                        fontSize: 12,
-                        textAlign: 'left',
-                        color: '#24292f'
-                    },
-                    barStyle: {
-                        width: 24, // 变细了
-                        barColor: '#3b82f6', // 蓝色
-                        completedBarColor: '#10b981', // 绿色
-                        cornerRadius: 6,
-                        borderWidth: 1,
-                        borderColor: '#e5e7eb'
-                    },
-                    progressAdjustable: true
-                },
-                
-                // 时间轴样式
-                timelineHeader: {
-                    verticalLine: { lineWidth: 1, lineColor: '#d1d5db' },
-                    horizontalLine: { lineWidth: 1, lineColor: '#d1d5db' },
-                    backgroundColor: '#f9fafb',
-                    colWidth: 40,
-                    scales: [
-                        {
-                            unit: 'week',
-                            step: 1,
-                            startOfWeek: 'sunday',
-                            format(date) { return `第 ${date.dateIndex} 周`; },
-                            style: { fontSize: 16, fontWeight: 'bold', color: '#111827', textAlign: 'center', backgroundColor: '#f9fafb' }
-                        },
-                        {
-                            unit: 'day',
-                            step: 1,
-                            format(date) { return date.dateIndex.toString(); },
-                            style: { fontSize: 14, color: '#374151', textAlign: 'center', backgroundColor: '#f9fafb' }
-                        }
-                    ]
-                },
-                
-                minDate: formatDate(today),
-                maxDate: formatDate(maxDate),
-                
-                // 行号
-                rowSeriesNumber: {
-                    title: '#',
-                    width: 40,
-                    headerStyle: { bgColor: '#f9fafb', borderColor: '#d1d5db' },
-                    style: { borderColor: '#d1d5db' }
-                },
-                
-                scrollStyle: {
-                    visible: 'scrolling',
-                    width: 8,
-                    scrollRailColor: '#f3f4f6',
-                    scrollSliderColor: '#d1d5db'
-                },
-                overscrollBehavior: 'none'
-            };
-
-            const ganttInstance = new VTableGantt.Gantt(containerRef.current, option);
-            instanceRef.current = ganttInstance;
-
-            // --- 事件监听 ---
-
-            // 1. Checkbox 状态变更逻辑 (核心修复)
-            ganttInstance.on('checkbox_state_change', (args) => {
-                const { col, row, checked } = args;
-                const record = instanceRef.current.getRecordByCell(col, row);
-                
-                if (record) {
-                    console.log(`[Checkbox] ID: ${record.id}, Title: ${record.title} -> Checked: ${checked}`);
-                    
-                    setRecords(prev => {
-                        const updateRecursive = (nodes) => {
-                            return nodes.map(node => {
-                                // 强制转为字符串比对，防止 ID 类型不一致导致匹配失败
-                                if (String(node.id) === String(record.id)) {
-                                    return { 
-                                        ...node, 
-                                        is_completed: checked, // 更新勾选状态
-                                        progress: checked ? 100 : node.progress // 体验优化：勾选自动设为 100%
-                                    };
-                                }
-                                if (node.children && node.children.length > 0) {
-                                    return { ...node, children: updateRecursive(node.children) };
-                                }
-                                return node;
-                            });
-                        };
-                        return updateRecursive(prev);
-                    });
-                } else {
-                    console.warn("[Checkbox] Clicked but no record found.");
-                }
-            });
-
-            // 2. Cell Edit
-            const handleCellEdit = (args) => {
-                const { col, row, field, value } = args;
-                const record = instanceRef.current.getRecordByCell(col, row);
-                if (!record || !record.id || !field) return;
-
-                let formattedValue = value;
-                if ((field === 'start' || field === 'end') && value) {
-                    formattedValue = formatDate(new Date(value));
-                }
-                const changedData = { [field]: formattedValue };
-
-                setRecords(currentRecords => {
-                    const updateNode = (nodes) => {
+                // 2. 更新 React 状态
+                setRecords(prev => {
+                    // 递归函数：遍历整棵树找到那个 ID 并更新它
+                    const updateRecursive = (nodes) => {
                         return nodes.map(node => {
-                            if (node.id === record.id) return { ...node, ...changedData };
-                            if (node.children) return { ...node, children: updateNode(node.children) };
+                            // 【重点修复】这里强制转成 String 进行对比，解决 ID 类型不一致的问题
+                            if (String(node.id) === String(record.id)) {
+                                console.log(" -> State Updated Successfully");
+                                return { 
+                                    ...node, 
+                                    is_completed: checked, // 强制更新状态
+                                    progress: checked ? 100 : node.progress 
+                                };
+                            }
+                            
+                            // 继续处理子节点
+                            if (node.children && node.children.length > 0) {
+                                return { ...node, children: updateRecursive(node.children) };
+                            }
+                            
                             return node;
                         });
                     };
-                    return updateNode(currentRecords);
+                    
+                    // 返回全新的数组，触发 React 重绘
+                    return updateRecursive(prev);
                 });
-            };
+            }
+        });
+        // --- 修复结束 ---
 
-            // 3. Task Drag/Resize
-            const handleTaskChange = (args) => {
-                if (isUpdatingExternally.current) {
-                    requestAnimationFrame(() => isUpdatingExternally.current = false);
-                    return;
-                }
-                setRecords(args.records);
-            };
-            
-            // 4. MarkLine
-            const handleMarkLineCreate = ({ data, position }) => {
-                createPopup({ date: data.startDate, content: '' }, position, async value => {
-                  const newMarkLine = {
-                    date: formatDate(data.startDate),
-                    content: value || '新建里程碑',
-                    store_id: storeId,
-                    contentStyle: { color: '#fff' },
-                    style: { lineWidth: 1, lineColor: 'red' }
-                  };
-                  const result = await apiCall('markline', 'POST', newMarkLine);
-                  if (result.success) setMarkLines(prev => [...prev, newMarkLine]);
-                });
-            };
-            const handleMarkLineClick = ({ data, position }) => {
-                createPopup({ date: data.date, content: data.content }, position, async value => {
-                  const updatedMarkLine = { ...data, content: value || data.content, store_id: storeId };
-                  const result = await apiCall('markline', 'POST', updatedMarkLine);
-                  if(result.success) {
-                    setMarkLines(prev => prev.map(line => line.date === data.date ? { ...line, content: value } : line));
-                  }
-                });
-            };
+        // 其他事件监听保持不变
+        const handleCellEdit = (args) => {
+            const { col, row, field, value } = args;
+            const record = instanceRef.current.getRecordByCell(col, row);
+            if (!record || !record.id || !field) return;
 
-            // 5. Context Menu
-            const handleContextMenu = (args) => {
-                args.event.preventDefault();
-                const record = instanceRef.current.getRecordByCell(args.col, args.row);
-                if (record) {
-                    setContextMenu({ visible: true, x: args.event.clientX, y: args.event.clientY, record: record });
-                }
-            };
+            let formattedValue = value;
+            if ((field === 'start' || field === 'end') && value) {
+                formattedValue = formatDate(new Date(value));
+            }
+            const changedData = { [field]: formattedValue };
 
-            ganttInstance.on('click_markline_create', handleMarkLineCreate);
-            ganttInstance.on('click_markline_content', handleMarkLineClick);
-            ganttInstance.on('change_task', handleTaskChange);
-            ganttInstance.on('after_edit_cell', handleCellEdit); 
-            ganttInstance.on('contextmenu_cell', handleContextMenu);
-        }
+            setRecords(currentRecords => {
+                const updateNode = (nodes) => {
+                    return nodes.map(node => {
+                        if (node.id === record.id) return { ...node, ...changedData };
+                        if (node.children) return { ...node, children: updateNode(node.children) };
+                        return node;
+                    });
+                };
+                return updateNode(currentRecords);
+            });
+        };
 
-        return () => {
-            if (instanceRef.current) {
-                instanceRef.current.release();
-                instanceRef.current = null;
+        const handleTaskChange = (args) => {
+            if (isUpdatingExternally.current) {
+                requestAnimationFrame(() => isUpdatingExternally.current = false);
+                return;
+            }
+            setRecords(args.records);
+        };
+        
+        const handleMarkLineCreate = ({ data, position }) => {
+            createPopup({ date: data.startDate, content: '' }, position, async value => {
+              const newMarkLine = {
+                date: formatDate(data.startDate),
+                content: value || '新建里程碑',
+                store_id: storeId,
+                contentStyle: { color: '#fff' },
+                style: { lineWidth: 1, lineColor: 'red' }
+              };
+              const result = await apiCall('markline', 'POST', newMarkLine);
+              if (result.success) setMarkLines(prev => [...prev, newMarkLine]);
+            });
+        };
+        const handleMarkLineClick = ({ data, position }) => {
+            createPopup({ date: data.date, content: data.content }, position, async value => {
+              const updatedMarkLine = { ...data, content: value || data.content, store_id: storeId };
+              const result = await apiCall('markline', 'POST', updatedMarkLine);
+              if(result.success) {
+                setMarkLines(prev => prev.map(line => line.date === data.date ? { ...line, content: value } : line));
+              }
+            });
+        };
+
+        const handleContextMenu = (args) => {
+            args.event.preventDefault();
+            const record = instanceRef.current.getRecordByCell(args.col, args.row);
+            if (record) {
+                setContextMenu({ visible: true, x: args.event.clientX, y: args.event.clientY, record: record });
             }
         };
-    }, []);
+
+        ganttInstance.on('click_markline_create', handleMarkLineCreate);
+        ganttInstance.on('click_markline_content', handleMarkLineClick);
+        ganttInstance.on('change_task', handleTaskChange);
+        ganttInstance.on('after_edit_cell', handleCellEdit); 
+        ganttInstance.on('contextmenu_cell', handleContextMenu);
+    }
+
+    return () => {
+        if (instanceRef.current) {
+            instanceRef.current.release();
+            instanceRef.current = null;
+        }
+    };
+}, []);
 
     // --- 同步 State 到 Gantt ---
     useEffect(() => {
