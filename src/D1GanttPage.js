@@ -264,7 +264,7 @@ const GanttChart = () => {
                     scales: getScalesConfig(timeScale)
                 },
                 minDate: '2025-11-01',
-                maxDate: '2025-12-30',
+                maxDate: '2026-02-28',
                 scrollStyle: { scrollRailColor: 'RGBA(246,246,246,0.5)', visible: 'focus', width: 6, scrollSliderCornerRadius: 2, scrollSliderColor: '#5cb85c' },
                 overscrollBehavior: 'none',
                 markLineCreateOptions: { markLineCreatable: true, markLineCreationHoverToolTip: { position: 'top', tipContent: '创建里程碑', style: { contentStyle: { fill: '#fff' }, panelStyle: { background: '#14161c', cornerRadius: 4 } } }, markLineCreationStyle: { fill: '#ccc', size: 30, iconSize: 12, svg: simplePlusIcon } }
