@@ -12,63 +12,80 @@ export async function onRequest(context) {
   const url = new URL(request.url);
   const pathSegments = params.path || [];
 
-  // Route: POST /api/tasks
-  // Saves all tasks in bulk for a specific store, overwriting existing data for that store.
-  if (request.method === 'POST' && pathSegments[0] === 'tasks') {
-    try {
-      const { records, storeId } = await request.json();
-      if (!Array.isArray(records) || !storeId) {
-        return jsonResponse({ error: 'Invalid data format, expected { records: [], storeId: "..." }' }, 400);
-      }
-
-      // Helper to flatten the nested records into a list, assigning parent_id
-      const flattenRecords = (records, parentId = null) => {
-        let flatList = [];
-        records.forEach(rec => {
-          const { children, ...rest } = rec;
-          flatList.push({ ...rest, parent_id: parentId });
-          if (children && children.length > 0) {
-            flatList = flatList.concat(flattenRecords(children, rec.id));
-          }
-        });
-        return flatList;
-      };
-
-      const flatRecords = flattenRecords(records);
-
-      const statements = [
-        // 1. Delete all existing tasks for the given storeId
-        env.DB.prepare('DELETE FROM gantt_tasks WHERE store_id = ?').bind(storeId),
-        // 2. Prepare insert statements for all new tasks
-        ...flatRecords.map(rec => env.DB.prepare(
-          'INSERT INTO gantt_tasks (id, parent_id, title, start, end, progress, avatar, store_id, is_completed) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
-        ).bind(
-          rec.id, 
-          rec.parent_id, 
-          rec.title, 
-          rec.start, 
-          rec.end, 
-          rec.progress, 
-          rec.avatar, 
-          storeId,
-          rec.is_completed ? 1 : 0 
-        ))
-      ];
-      
-      // Execute all statements in a single transaction
-      await env.DB.batch(statements);
-
-      return jsonResponse({ success: true, message: `Successfully saved ${flatRecords.length} tasks for store ${storeId}.` });
-
-    } catch (e) {
-      console.error('Error saving tasks to D1:', e);
-      return jsonResponse({
-        error: 'Failed to save tasks to D1.',
-        details: e.message,
-        stack: e.stack,
-      }, 500);
+// Route: POST /api/tasks
+if (request.method === 'POST' && pathSegments[0] === 'tasks') {
+  try {
+    const { records, storeId } = await request.json();
+    
+    // 基本校验
+    if (!Array.isArray(records) || !storeId) {
+      return jsonResponse({ error: 'Invalid data format' }, 400);
     }
+
+    // --- 关键函数：扁平化嵌套数据 ---
+    // 你的 payload 里有 children，必须把它们拆出来变成扁平的列表才能存入 SQL
+    const flattenRecords = (nodes, parentId = null) => {
+      let flatList = [];
+      nodes.forEach(node => {
+        // 解构出 children，剩下的就是当前任务的数据
+        const { children, ...taskData } = node;
+        
+        // 确保 parent_id 正确（使用递归传进来的 parentId）
+        // 同时保留 is_completed
+        flatList.push({ 
+          ...taskData, 
+          parent_id: parentId 
+        });
+
+        // 如果有子节点，递归处理
+        if (children && children.length > 0) {
+          flatList = flatList.concat(flattenRecords(children, node.id));
+        }
+      });
+      return flatList;
+    };
+
+    const flatRecords = flattenRecords(records);
+
+    const statements = [
+      // 1. 先删除该门店旧数据
+      env.DB.prepare('DELETE FROM gantt_tasks WHERE store_id = ?').bind(storeId),
+      
+      // 2. 插入新数据（包含 is_completed）
+      ...flatRecords.map(rec => {
+          // 转换逻辑：前端的 true/false 转为 数据库的 1/0
+          // 如果 rec.is_completed 是 undefined/null，默认为 0
+          const completedVal = (rec.is_completed === true || rec.is_completed === 1) ? 1 : 0;
+
+          return env.DB.prepare(
+            `INSERT INTO gantt_tasks (
+               id, store_id, title, start, end, progress, sub, avatar, parent_id, is_completed
+             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          ).bind(
+            rec.id,
+            storeId,
+            rec.title,
+            rec.start,
+            rec.end,
+            rec.progress,
+            rec.sub,    // 你的 payload 里有 sub 字段
+            rec.avatar,
+            rec.parent_id,
+            completedVal // <--- 关键：这里必须绑定转换后的值
+          );
+      })
+    ];
+    
+    // 执行批量事务
+    await env.DB.batch(statements);
+
+    return jsonResponse({ success: true, count: flatRecords.length });
+
+  } catch (e) {
+    console.error('Error saving tasks:', e);
+    return jsonResponse({ error: 'Failed to save.', details: e.message }, 500);
   }
+}
 
   // Route: GET /api/data/:storeId
   // Fetches initial records and marklines for a specific store
