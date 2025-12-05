@@ -13,6 +13,33 @@ function formatDate(date) {
     return year + '-' + month + '-' + day;
 }
 
+const calculateAutoProgress = (start, end) => {
+    const startDate = new Date(start);
+    const endDate = new Date(end);
+    const today = new Date();
+
+    // 如果今天还没到开始日期，进度为 0
+    if (today < startDate) {
+        return 0;
+    }
+    // 如果今天已经超过结束日期，进度为 100
+    if (today > endDate) {
+        return 100;
+    }
+
+    const totalDuration = endDate.getTime() - startDate.getTime();
+    const elapsedDuration = today.getTime() - startDate.getTime();
+
+    // 避免总时长为0导致除法错误
+    if (totalDuration === 0) {
+        return 100;
+    }
+
+    const progress = (elapsedDuration / totalDuration) * 100;
+    return Math.min(100, Math.round(progress)); // 确保进度不超过100并四舍五入
+};
+
+
 function createPopup({ date, content }, position, callback) {
     let container = document.getElementById('live-demo-additional-container');
     if (!container) {
@@ -163,7 +190,20 @@ const GanttChart = () => {
                 throw new Error(`Network response was not ok: ${response.statusText}`);
             }
             const data = await response.json();
-            setRecords(Array.isArray(data.records) ? data.records : []);
+            
+            const processRecords = (tasks) => {
+                return tasks.map(task => {
+                    const newTask = { ...task };
+                    newTask.progress = calculateAutoProgress(task.start, task.end);
+                    if (task.children) {
+                        newTask.children = processRecords(task.children);
+                    }
+                    return newTask;
+                });
+            };
+
+            const processedRecords = processRecords(data.records || []);
+            setRecords(Array.isArray(processedRecords) ? processedRecords : []);
             setMarkLines(Array.isArray(data.markLines) ? data.markLines : []);
         } catch (error) {
             console.error('ERROR: Failed to fetch or parse data from API.', error);
