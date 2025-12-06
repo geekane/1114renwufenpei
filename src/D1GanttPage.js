@@ -1,5 +1,3 @@
-// --- START OF FILE D1GanttPage.js ---
-
 import React, { useEffect, useRef, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { Button, Space, message } from 'antd';
@@ -112,10 +110,12 @@ const GanttChart = () => {
             const data = await response.json();
 
             if (Array.isArray(data.records)) {
-                // 将后端返回的 0/1 转换为 false/true，防止 VTable 崩溃
+                // 将后端返回的 0/1 转换为 false/true
                 const processRecords = (nodes) => {
-                    return nodes.map(node => {
+                    // 1. 先进行映射处理
+                    const mappedNodes = nodes.map(node => {
                         const boolCompleted = node.is_completed === 1 || node.is_completed === true;
+                        // 递归处理子节点
                         const children = node.children ? processRecords(node.children) : undefined;
                         return {
                             ...node,
@@ -123,7 +123,16 @@ const GanttChart = () => {
                             children: children
                         };
                     });
+
+                    // 2. 增加排序逻辑：使用 natural sort (自然排序)
+                    // 这会让 "1. xxx", "2. xxx", "10. xxx" 按数字顺序排列
+                    return mappedNodes.sort((a, b) => {
+                        const titleA = a.title || '';
+                        const titleB = b.title || '';
+                        return titleA.localeCompare(titleB, 'zh-CN', { numeric: true });
+                    });
                 };
+                
                 setRecords(processRecords(data.records));
             } else {
                 setRecords([]);
@@ -174,7 +183,14 @@ const GanttChart = () => {
                     cellType: 'checkbox',
                     style: { textAlign: 'center' }
                 },
-                { field: 'title', title: '任务名称', width: 200, sort: true, tree: true, editor: 'input-editor' },
+                { 
+                    field: 'title', 
+                    title: '任务名称', 
+                    width: 250, 
+                    sort: true, // 保留 UI 上的排序箭头
+                    tree: true, 
+                    editor: 'input-editor' 
+                },
                 { field: 'start', title: '开始日期', width: 100, sort: true, editor: 'date-editor' },
                 { field: 'end', title: '结束日期', width: 100, sort: true, editor: 'date-editor' },
                 {
@@ -228,7 +244,7 @@ const GanttChart = () => {
                     },
                     progressAdjustable: true
                 },
-                // --- 修复后的时间轴配置 (显示月/日) ---
+                // --- 时间轴配置 (显示月/日) ---
                 timelineHeader: {
                     verticalLine: {
                         lineWidth: 1,
@@ -284,17 +300,14 @@ const GanttChart = () => {
             const ganttInstance = new VTableGantt.Gantt(containerRef.current, option);
             instanceRef.current = ganttInstance;
 
-            // --- 关键修复：直接监听内部表格 (taskListTableInstance) ---
-            // 确保复选框状态能正确同步
+            // --- 监听内部表格 Checkbox ---
             if (ganttInstance.taskListTableInstance) {
                 ganttInstance.taskListTableInstance.on('checkbox_state_change', (args) => {
                     const { col, row, checked } = args;
-                    // 从内部表格获取记录
                     const record = ganttInstance.taskListTableInstance.getRecordByCell(col, row);
                     
                     if (record) {
                         console.log(`[CHECKBOX EVENT] Task: ${record.title} (ID:${record.id}) -> ${checked}`);
-                        
                         setRecords(prev => {
                             const updateRecursive = (nodes) => {
                                 return nodes.map(node => {
@@ -429,7 +442,7 @@ const GanttChart = () => {
 
             // 2. 如果找到了有效的日期范围，更新时间轴配置
             if (minTs !== Infinity && maxTs !== -Infinity) {
-                // 前后各增加 3 天的缓冲，避免任务条紧贴着边缘
+                // 前后各增加 3 天的缓冲
                 const bufferTime = 3 * 24 * 60 * 60 * 1000; 
                 
                 const newMinDate = new Date(minTs - bufferTime);
@@ -457,7 +470,7 @@ const GanttChart = () => {
     const handleSaveChanges = async () => {
         setIsLoading(true);
         try {
-            console.log("Saving records to cloud:", records); // 调试日志
+            console.log("Saving records to cloud:", records);
             const result = await apiCall('tasks', 'POST', { records, storeId });
             if (result.success) message.success('更改已成功保存');
             else message.error('保存失败: ' + (result.error?.message || '未知错误'));
