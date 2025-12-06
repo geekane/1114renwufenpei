@@ -149,12 +149,12 @@ const GanttChart = () => {
                         }
                     }
                 },
-                { field: 'start', title: '开始日期', width: 100, sort: true, editor: 'date-editor' },
-                { field: 'end', title: '结束日期', width: 100, sort: true, editor: 'date-editor' },
+                { field: 'start', title: '开始日期', width: 120, sort: true, editor: 'date-editor' },
+                { field: 'end', title: '结束日期', width: 120, sort: true, editor: 'date-editor' },
                 {
                     field: 'progress',
                     title: '进度',
-                    width: 80,
+                    width: 60,
                     sort: true,
                     headerStyle: { borderColor: '#e1e4e8' },
                     style: { borderColor: '#e1e4e8', color: 'green' }
