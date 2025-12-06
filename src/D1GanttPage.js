@@ -228,27 +228,55 @@ useEffect(() => {
                 progressAdjustable: true
             },
             timelineHeader: {
-                verticalLine: { lineWidth: 1, lineColor: '#d1d5db' },
-                horizontalLine: { lineWidth: 1, lineColor: '#d1d5db' },
+                verticalLine: {
+                    lineWidth: 1,
+                    lineColor: '#d1d5db'
+                },
+                horizontalLine: {
+                    lineWidth: 1,
+                    lineColor: '#d1d5db'
+                },
                 backgroundColor: '#f9fafb',
                 colWidth: 40,
                 scales: [
-                    { unit: 'week', step: 1, startOfWeek: 'sunday', format(date) { return `第 ${date.dateIndex} 周`; }, style: { fontSize: 16, fontWeight: 'bold', color: '#111827', textAlign: 'center', backgroundColor: '#f9fafb' } },
-                    { unit: 'day', step: 1, format(date) { return date.dateIndex.toString(); }, style: { fontSize: 14, color: '#374151', textAlign: 'center', backgroundColor: '#f9fafb' } }
+                    {
+                        unit: 'month',
+                        step: 1,
+                        format(date) {
+                            const d = date.startDate;
+                            return `${d.getFullYear()}年${d.getMonth() + 1}月`;
+                        },
+                        style: {
+                            fontSize: 14,
+                            fontWeight: 'bold',
+                            color: '#111827',
+                            textAlign: 'left', // 靠左显示更符合阅读习惯
+                            textStick: true,   // 关键：滚动时月份吸顶
+                            padding: [0, 10],
+                            backgroundColor: '#f9fafb',
+                            borderBottom: '1px solid #d1d5db' // 增加分割线
+                        }
+                    },
+                    {
+                        unit: 'day',
+                        step: 1,
+                        format(date) {
+                            return date.dateIndex.toString();
+                        },
+                        style: {
+                            fontSize: 12,
+                            color: '#374151',
+                            textAlign: 'center',
+                            backgroundColor: '#f9fafb'
+                        }
+                    }
                 ]
             },
-            minDate: formatDate(today),
-            maxDate: formatDate(maxDate),
-            rowSeriesNumber: { title: '#', width: 40, headerStyle: { bgColor: '#f9fafb', borderColor: '#d1d5db' }, style: { borderColor: '#d1d5db' } },
-            scrollStyle: { visible: 'scrolling', width: 8, scrollRailColor: '#f3f4f6', scrollSliderColor: '#d1d5db' },
-            overscrollBehavior: 'none'
-        };
 
         const ganttInstance = new VTableGantt.Gantt(containerRef.current, option);
         instanceRef.current = ganttInstance;
 
         // --- 关键修复：直接监听内部表格 (taskListTableInstance) ---
-        // 复选框存在于左侧的任务列表表格中，我们需要在这里监听事件
         if (ganttInstance.taskListTableInstance) {
             ganttInstance.taskListTableInstance.on('checkbox_state_change', (args) => {
                 const { col, row, checked } = args;
