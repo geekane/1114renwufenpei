@@ -1,10 +1,11 @@
-import React, { useEffect, useRef, useState, useMemo } from 'react';
+import React, { useEffect, useRef, useState, useMemo, useContext } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { Button, Space, message, DatePicker } from 'antd';
 import dayjs from 'dayjs';
 import * as VTable from '@visactor/vtable';
 import * as VTableGantt from '@visactor/vtable-gantt';
 import { DateInputEditor, InputEditor } from '@visactor/vtable-editors';
+import { AuthContext } from './AuthContext';
 
 const { RangePicker } = DatePicker;
 
@@ -95,6 +96,11 @@ const GanttChart = () => {
     const isUpdatingExternally = useRef(false);
     const isFirstRun = useRef(true);
     
+    const { userRole } = useContext(AuthContext);
+    const isReadOnly = userRole === 'readonly';
+    
+    console.log(`[DEBUG PERMISSION] Current Role: ${userRole}, IsReadOnly: ${isReadOnly}`);
+
     // State
     const [records, setRecords] = useState([]);
     const [markLines, setMarkLines] = useState([]);
@@ -102,7 +108,7 @@ const GanttChart = () => {
     const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0, record: null });
     
     const [viewRange, setViewRange] = useState([
-        dayjs(), 
+        dayjs(),
         dayjs().add(2, 'month')
     ]);
 
@@ -117,15 +123,18 @@ const GanttChart = () => {
                     title: '✓',
                     width: 40,
                     cellType: 'checkbox',
-                    style: { textAlign: 'center' }
+                    style: { textAlign: 'center' },
+                    // 只读模式下禁用 checkbox (通过 cellType 控制或者 style，VTable 目前 checkbox 总是可点的，
+                    // 但我们可以在事件回调中阻止更新)
+                    editable: !isReadOnly
                 },
-                { 
-                    field: 'title', 
-                    title: '任务名称', 
-                    width: 180, 
+                {
+                    field: 'title',
+                    title: '任务名称',
+                    width: 180,
                     sort: true,
-                    tree: true, 
-                    editor: 'input-editor',
+                    tree: true,
+                    editor: isReadOnly ? undefined : 'input-editor', // 只读禁用编辑
                     style: {
                         color: (args) => {
                             const record = args.data;
@@ -149,8 +158,8 @@ const GanttChart = () => {
                         }
                     }
                 },
-                { field: 'start', title: '开始日期', width: 110, sort: true, editor: 'date-editor' },
-                { field: 'end', title: '结束日期', width: 110, sort: true, editor: 'date-editor' },
+                { field: 'start', title: '开始日期', width: 110, sort: true, editor: isReadOnly ? undefined : 'date-editor' },
+                { field: 'end', title: '结束日期', width: 110, sort: true, editor: isReadOnly ? undefined : 'date-editor' },
                 {
                     field: 'progress',
                     title: '进度',
@@ -426,6 +435,7 @@ const GanttChart = () => {
             // --- Listener ---
             if (ganttInstance.taskListTableInstance) {
                 ganttInstance.taskListTableInstance.on('checkbox_state_change', (args) => {
+                    if (isReadOnly) return; // 只读模式下忽略 Checkbox 更改
                     const { col, row, checked } = args;
                     const record = ganttInstance.taskListTableInstance.getRecordByCell(col, row);
                     if (record) {
@@ -450,6 +460,7 @@ const GanttChart = () => {
             }
 
             const handleCellEdit = (args) => {
+                if (isReadOnly) return; // 只读模式下忽略编辑
                 const { col, row, field, value } = args;
                 const record = instanceRef.current.getRecordByCell(col, row);
                 if (!record || !record.id || !field) return;
@@ -473,6 +484,7 @@ const GanttChart = () => {
             };
 
             const handleTaskChange = (args) => {
+                if (isReadOnly) return; // 只读模式下忽略任务拖拽
                 if (isUpdatingExternally.current) {
                     requestAnimationFrame(() => isUpdatingExternally.current = false);
                     return;
@@ -481,6 +493,7 @@ const GanttChart = () => {
             };
             
             const handleMarkLineCreate = ({ data, position }) => {
+                if (isReadOnly) return;
                 createPopup({ date: data.startDate, content: '' }, position, async value => {
                   const newMarkLine = {
                     date: formatDate(data.startDate),
@@ -494,6 +507,7 @@ const GanttChart = () => {
                 });
             };
             const handleMarkLineClick = ({ data, position }) => {
+                if (isReadOnly) return;
                 createPopup({ date: data.date, content: data.content }, position, async value => {
                   const updatedMarkLine = { ...data, content: value || data.content, store_id: storeId };
                   const result = await apiCall('markline', 'POST', updatedMarkLine);
@@ -504,6 +518,7 @@ const GanttChart = () => {
             };
 
             const handleContextMenu = (args) => {
+                if (isReadOnly) return;
                 args.event.preventDefault();
                 const record = instanceRef.current.getRecordByCell(args.col, args.row);
                 if (record) {
@@ -511,11 +526,13 @@ const GanttChart = () => {
                 }
             };
 
-            ganttInstance.on('click_markline_create', handleMarkLineCreate);
-            ganttInstance.on('click_markline_content', handleMarkLineClick);
-            ganttInstance.on('change_task', handleTaskChange);
-            ganttInstance.on('after_edit_cell', handleCellEdit); 
-            ganttInstance.on('contextmenu_cell', handleContextMenu);
+            if (!isReadOnly) {
+                ganttInstance.on('click_markline_create', handleMarkLineCreate);
+                ganttInstance.on('click_markline_content', handleMarkLineClick);
+                ganttInstance.on('change_task', handleTaskChange);
+                ganttInstance.on('after_edit_cell', handleCellEdit);
+                ganttInstance.on('contextmenu_cell', handleContextMenu);
+            }
         }
 
         return () => {
@@ -575,6 +592,10 @@ const GanttChart = () => {
     const handleRefresh = () => fetchData();
 
     const handleSaveChanges = async () => {
+        if (isReadOnly) {
+            message.warning('只读账号无法保存更改');
+            return;
+        }
         setIsLoading(true);
         try {
             console.log("Saving records to cloud:", records);
@@ -589,6 +610,7 @@ const GanttChart = () => {
     };
 
     const handleAddTask = async (parentId = null) => {
+        if (isReadOnly) return;
         const newTask = {
             title: parentId ? "新子任务" : "新任务",
             start: formatDate(new Date()),
@@ -615,6 +637,7 @@ const GanttChart = () => {
     };
 
     const handleClearInvalidTasks = async () => {
+        if (isReadOnly) return;
         if (!window.confirm('确定要清理所有“新任务”且时长不超过1天的无效任务吗？此操作不可撤销。')) {
             return;
         }
@@ -706,10 +729,29 @@ const GanttChart = () => {
                 <Space>
                     <Link to={`/crowd-portrait/${storeId}`}><Button>人群画像分析</Button></Link>
                     <Button onClick={handleRefresh} disabled={isLoading}>{isLoading ? '正在刷新...' : '刷新同步数据'}</Button>
-                    <Button onClick={handleClearInvalidTasks} disabled={isLoading} danger>一键清理无效任务</Button>
-                    <Button onClick={() => handleAddTask(null)} disabled={isLoading}>新增任务</Button>
-                    <Button type="primary" onClick={handleSaveChanges} disabled={isLoading} loading={isLoading}>
-                        {isLoading ? '正在保存...' : '保存更改到云端'}
+                    {/* 强制使用 style display none 作为双重保险，防止条件渲染延迟 */}
+                    <Button
+                        onClick={handleClearInvalidTasks}
+                        disabled={isLoading || isReadOnly}
+                        danger
+                        style={{ display: isReadOnly ? 'none' : 'inline-block' }}
+                    >
+                        一键清理无效任务
+                    </Button>
+                    <Button
+                        onClick={() => handleAddTask(null)}
+                        disabled={isLoading || isReadOnly}
+                        style={{ display: isReadOnly ? 'none' : 'inline-block' }}
+                    >
+                        新增任务
+                    </Button>
+                    <Button
+                        type="primary"
+                        onClick={handleSaveChanges}
+                        disabled={isLoading || isReadOnly}
+                        loading={isLoading}
+                    >
+                        {isLoading ? '正在保存...' : (isReadOnly ? '只读模式' : '保存更改到云端')}
                     </Button>
                 </Space>
             </div>
