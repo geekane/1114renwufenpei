@@ -1,12 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { Button, Space, message, DatePicker } from 'antd';
-import dayjs from 'dayjs';
+import { Button, Space, message } from 'antd';
 import * as VTable from '@visactor/vtable';
 import * as VTableGantt from '@visactor/vtable-gantt';
 import { DateInputEditor, InputEditor } from '@visactor/vtable-editors';
-
-const { RangePicker } = DatePicker;
 
 // --- 辅助函数 ---
 
@@ -101,12 +98,6 @@ const GanttChart = () => {
     const [markLines, setMarkLines] = useState([]);
     const [isLoading, setIsLoading] = useState(false);
     const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0, record: null });
-    
-    // --- 默认时间范围：今天 -> 2个月后 ---
-    const [viewRange, setViewRange] = useState([
-        dayjs(), 
-        dayjs().add(2, 'month')
-    ]);
 
     // 1. Fetch Data
     const fetchData = async () => {
@@ -119,7 +110,9 @@ const GanttChart = () => {
             const data = await response.json();
 
             if (Array.isArray(data.records)) {
+                // --- 仅修改了这里的 processRecords 逻辑 ---
                 const processRecords = (nodes) => {
+                    // 1. 先进行数据映射（处理布尔值和递归子节点）
                     const mappedNodes = nodes.map(node => {
                         const boolCompleted = node.is_completed === 1 || node.is_completed === true;
                         const children = node.children ? processRecords(node.children) : undefined;
@@ -129,15 +122,18 @@ const GanttChart = () => {
                             children: children
                         };
                     });
-                    
-                    // 自然排序
+
+                    // 2. 增加自然排序逻辑：
+                    // 使用 localeCompare 配合 { numeric: true }
+                    // 这样 "1. xxx" 后面会跟着 "2. xxx" 而不是 "10. xxx"
                     return mappedNodes.sort((a, b) => {
                         const titleA = a.title ? String(a.title) : '';
                         const titleB = b.title ? String(b.title) : '';
                         return titleA.localeCompare(titleB, 'zh-CN', { numeric: true });
                     });
                 };
-                
+                // ----------------------------------------
+
                 setRecords(processRecords(data.records));
             } else {
                 setRecords([]);
@@ -179,7 +175,7 @@ const GanttChart = () => {
             const dateEditor = new DateInputEditor();
             VTable.register.editor('date-editor', dateEditor);
 
-            // Columns
+            // Columns 配置
             const columns = [
                 {
                     field: 'is_completed',
@@ -188,14 +184,7 @@ const GanttChart = () => {
                     cellType: 'checkbox',
                     style: { textAlign: 'center' }
                 },
-                { 
-                    field: 'title', 
-                    title: '任务名称', 
-                    width: 250, 
-                    sort: true,
-                    tree: true, 
-                    editor: 'input-editor' 
-                },
+                { field: 'title', title: '任务名称', width: 200, sort: true, tree: true, editor: 'input-editor' },
                 { field: 'start', title: '开始日期', width: 100, sort: true, editor: 'date-editor' },
                 { field: 'end', title: '结束日期', width: 100, sort: true, editor: 'date-editor' },
                 {
@@ -207,6 +196,10 @@ const GanttChart = () => {
                     style: { borderColor: '#e1e4e8', color: 'green' }
                 }
             ];
+
+            const today = new Date();
+            const maxDate = new Date();
+            maxDate.setMonth(today.getMonth() + 3); // 稍微调大一点范围
 
             const option = {
                 records: [], 
@@ -245,8 +238,14 @@ const GanttChart = () => {
                     progressAdjustable: true
                 },
                 timelineHeader: {
-                    verticalLine: { lineWidth: 1, lineColor: '#d1d5db' },
-                    horizontalLine: { lineWidth: 1, lineColor: '#d1d5db' },
+                    verticalLine: {
+                        lineWidth: 1,
+                        lineColor: '#d1d5db'
+                    },
+                    horizontalLine: {
+                        lineWidth: 1,
+                        lineColor: '#d1d5db'
+                    },
                     backgroundColor: '#f9fafb',
                     colWidth: 40,
                     scales: [
@@ -254,7 +253,6 @@ const GanttChart = () => {
                             unit: 'month',
                             step: 1,
                             format(date) {
-                                if (!date || !date.startDate) return '';
                                 const d = date.startDate;
                                 return `${d.getFullYear()}年${d.getMonth() + 1}月`;
                             },
@@ -262,8 +260,8 @@ const GanttChart = () => {
                                 fontSize: 14,
                                 fontWeight: 'bold',
                                 color: '#111827',
-                                textAlign: 'left',
-                                textStick: true, 
+                                textAlign: 'left', // 靠左显示
+                                textStick: true,   // 滚动吸顶
                                 padding: [0, 10],
                                 backgroundColor: '#f9fafb',
                                 borderBottom: '1px solid #d1d5db' 
@@ -284,23 +282,24 @@ const GanttChart = () => {
                         }
                     ]
                 },
-                // --- 使用 State 中的日期初始化 (默认 Today -> +2 Months) ---
-                minDate: viewRange[0].format('YYYY-MM-DD'),
-                maxDate: viewRange[1].format('YYYY-MM-DD'),
+                minDate: formatDate(today),
+                maxDate: formatDate(maxDate),
                 rowSeriesNumber: { title: '#', width: 40, headerStyle: { bgColor: '#f9fafb', borderColor: '#d1d5db' }, style: { borderColor: '#d1d5db' } },
                 scrollStyle: { visible: 'scrolling', width: 8, scrollRailColor: '#f3f4f6', scrollSliderColor: '#d1d5db' },
                 overscrollBehavior: 'none'
-            };
+            }; // <--- 此处保留了您提供的修复后的闭合符号
 
             const ganttInstance = new VTableGantt.Gantt(containerRef.current, option);
             instanceRef.current = ganttInstance;
 
-            // --- Listener ---
+            // --- 监听内部表格 Checkbox ---
             if (ganttInstance.taskListTableInstance) {
                 ganttInstance.taskListTableInstance.on('checkbox_state_change', (args) => {
                     const { col, row, checked } = args;
                     const record = ganttInstance.taskListTableInstance.getRecordByCell(col, row);
+                    
                     if (record) {
+                        console.log(`[CHECKBOX EVENT] Task: ${record.title} (ID:${record.id}) -> ${checked}`);
                         setRecords(prev => {
                             const updateRecursive = (nodes) => {
                                 return nodes.map(node => {
@@ -321,6 +320,7 @@ const GanttChart = () => {
                 });
             }
 
+            // Cell Edit
             const handleCellEdit = (args) => {
                 const { col, row, field, value } = args;
                 const record = instanceRef.current.getRecordByCell(col, row);
@@ -344,6 +344,7 @@ const GanttChart = () => {
                 });
             };
 
+            // Task Drag
             const handleTaskChange = (args) => {
                 if (isUpdatingExternally.current) {
                     requestAnimationFrame(() => isUpdatingExternally.current = false);
@@ -352,6 +353,7 @@ const GanttChart = () => {
                 setRecords(args.records);
             };
             
+            // Marklines
             const handleMarkLineCreate = ({ data, position }) => {
                 createPopup({ date: data.startDate, content: '' }, position, async value => {
                   const newMarkLine = {
@@ -375,6 +377,7 @@ const GanttChart = () => {
                 });
             };
 
+            // Context Menu
             const handleContextMenu = (args) => {
                 args.event.preventDefault();
                 const record = instanceRef.current.getRecordByCell(args.col, args.row);
@@ -383,6 +386,7 @@ const GanttChart = () => {
                 }
             };
 
+            // 监听事件
             ganttInstance.on('click_markline_create', handleMarkLineCreate);
             ganttInstance.on('click_markline_content', handleMarkLineClick);
             ganttInstance.on('change_task', handleTaskChange);
@@ -398,38 +402,22 @@ const GanttChart = () => {
         };
     }, []);
 
-    // --- 数据变化时：仅更新数据，保持默认时间范围 (Today -> +2M) ---
-    // 用户可以通过上方的日期选择器手动更改
+    // --- 同步 State 到 Gantt ---
     useEffect(() => {
-        if (!instanceRef.current) return;
-        instanceRef.current.setRecords(records);
+        if (instanceRef.current) instanceRef.current.setRecords(records);
     }, [records]);
 
     useEffect(() => {
         if (instanceRef.current && markLines) instanceRef.current.updateMarkLine(markLines);
     }, [markLines]);
 
-    // --- 用户手动改变日期范围 (自定义能力) ---
-    const handleDateRangeChange = (dates) => {
-        if (!dates || dates.length < 2) return;
-        
-        setViewRange(dates); // 更新 UI
-        
-        if (instanceRef.current) {
-            instanceRef.current.updateOption({
-                minDate: dates[0].format('YYYY-MM-DD'),
-                maxDate: dates[1].format('YYYY-MM-DD')
-            });
-        }
-    };
-
-    // --- Buttons ---
+    // --- 按钮操作 ---
     const handleRefresh = () => fetchData();
 
     const handleSaveChanges = async () => {
         setIsLoading(true);
         try {
-            console.log("Saving records to cloud:", records);
+            console.log("Saving records to cloud:", records); // 调试日志
             const result = await apiCall('tasks', 'POST', { records, storeId });
             if (result.success) message.success('更改已成功保存');
             else message.error('保存失败: ' + (result.error?.message || '未知错误'));
@@ -467,7 +455,7 @@ const GanttChart = () => {
     };
 
     return (
-        <div style={{ height: '90vh', width: '100%', display: 'flex', flexDirection: 'column', position: 'relative' }}>
+        <div style={{ height: '100%', width: '100%', display: 'flex', flexDirection: 'column', position: 'relative' }}>
             {contextMenu.visible && (
                 <div 
                     style={{
@@ -482,17 +470,9 @@ const GanttChart = () => {
                 </div>
             )}
             
-            <div style={{ padding: '10px', borderBottom: '1px solid #eee', display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: '50px', flexShrink: 0 }}>
+            <div style={{ padding: '10px', borderBottom: '1px solid #eee', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <Space>
                    <span style={{fontWeight:'bold'}}>项目排期表</span>
-                   {/* 日期范围选择器：允许手动调整，默认显示 Today -> +2 Months */}
-                   <span style={{ marginLeft: 20 }}>视图范围：</span>
-                   <RangePicker 
-                       value={viewRange}
-                       allowClear={false}
-                       onChange={handleDateRangeChange}
-                       style={{ width: 260 }}
-                   />
                 </Space>
                 <Space>
                     <Link to={`/crowd-portrait/${storeId}`}><Button>人群画像分析</Button></Link>
@@ -504,7 +484,7 @@ const GanttChart = () => {
                 </Space>
             </div>
             
-            <div ref={containerRef} style={{ flex: 1, width: '100%', minHeight: '400px' }} />
+            <div ref={containerRef} style={{ flex: 1, width: '100%' }} />
         </div>
     );
 };
