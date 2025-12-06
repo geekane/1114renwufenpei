@@ -1,3 +1,5 @@
+// --- START OF FILE D1GanttPage.js ---
+
 import React, { useEffect, useRef, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { Button, Space, message } from 'antd';
@@ -185,9 +187,10 @@ const GanttChart = () => {
                 }
             ];
 
+            // 初始占位日期，稍后会根据数据自动更新
             const today = new Date();
-            const maxDate = new Date();
-            maxDate.setMonth(today.getMonth() + 3); // 稍微调大一点范围
+            const initMaxDate = new Date();
+            initMaxDate.setMonth(today.getMonth() + 1);
 
             const option = {
                 records: [], 
@@ -225,6 +228,7 @@ const GanttChart = () => {
                     },
                     progressAdjustable: true
                 },
+                // --- 修复后的时间轴配置 (显示月/日) ---
                 timelineHeader: {
                     verticalLine: {
                         lineWidth: 1,
@@ -249,7 +253,7 @@ const GanttChart = () => {
                                 fontWeight: 'bold',
                                 color: '#111827',
                                 textAlign: 'left', // 靠左显示
-                                textStick: true,   // 滚动吸顶
+                                textStick: true,   // 滚动吸顶，关键！
                                 padding: [0, 10],
                                 backgroundColor: '#f9fafb',
                                 borderBottom: '1px solid #d1d5db' 
@@ -271,23 +275,26 @@ const GanttChart = () => {
                     ]
                 },
                 minDate: formatDate(today),
-                maxDate: formatDate(maxDate),
+                maxDate: formatDate(initMaxDate),
                 rowSeriesNumber: { title: '#', width: 40, headerStyle: { bgColor: '#f9fafb', borderColor: '#d1d5db' }, style: { borderColor: '#d1d5db' } },
                 scrollStyle: { visible: 'scrolling', width: 8, scrollRailColor: '#f3f4f6', scrollSliderColor: '#d1d5db' },
                 overscrollBehavior: 'none'
-            }; // <--- 修复点：这里原来少了这个闭合符号
+            };
 
             const ganttInstance = new VTableGantt.Gantt(containerRef.current, option);
             instanceRef.current = ganttInstance;
 
-            // --- 监听内部表格 Checkbox ---
+            // --- 关键修复：直接监听内部表格 (taskListTableInstance) ---
+            // 确保复选框状态能正确同步
             if (ganttInstance.taskListTableInstance) {
                 ganttInstance.taskListTableInstance.on('checkbox_state_change', (args) => {
                     const { col, row, checked } = args;
+                    // 从内部表格获取记录
                     const record = ganttInstance.taskListTableInstance.getRecordByCell(col, row);
                     
                     if (record) {
                         console.log(`[CHECKBOX EVENT] Task: ${record.title} (ID:${record.id}) -> ${checked}`);
+                        
                         setRecords(prev => {
                             const updateRecursive = (nodes) => {
                                 return nodes.map(node => {
@@ -374,7 +381,7 @@ const GanttChart = () => {
                 }
             };
 
-            // 监听事件
+            // 监听外层事件
             ganttInstance.on('click_markline_create', handleMarkLineCreate);
             ganttInstance.on('click_markline_content', handleMarkLineClick);
             ganttInstance.on('change_task', handleTaskChange);
@@ -390,9 +397,54 @@ const GanttChart = () => {
         };
     }, []);
 
-    // --- 同步 State 到 Gantt ---
+    // --- 同步 State 到 Gantt (自动计算最早/最晚日期) ---
     useEffect(() => {
-        if (instanceRef.current) instanceRef.current.setRecords(records);
+        if (!instanceRef.current) return;
+
+        // 1. 如果有数据，计算所有任务中最早的开始时间和最晚的结束时间
+        if (records && records.length > 0) {
+            let minTs = Infinity;
+            let maxTs = -Infinity;
+
+            const traverse = (nodes) => {
+                nodes.forEach(node => {
+                    // 检查开始时间
+                    if (node.start) {
+                        const s = new Date(node.start).getTime();
+                        if (!isNaN(s) && s < minTs) minTs = s;
+                    }
+                    // 检查结束时间
+                    if (node.end) {
+                        const e = new Date(node.end).getTime();
+                        if (!isNaN(e) && e > maxTs) maxTs = e;
+                    }
+                    // 递归检查子任务
+                    if (node.children && node.children.length > 0) {
+                        traverse(node.children);
+                    }
+                });
+            };
+
+            traverse(records);
+
+            // 2. 如果找到了有效的日期范围，更新时间轴配置
+            if (minTs !== Infinity && maxTs !== -Infinity) {
+                // 前后各增加 3 天的缓冲，避免任务条紧贴着边缘
+                const bufferTime = 3 * 24 * 60 * 60 * 1000; 
+                
+                const newMinDate = new Date(minTs - bufferTime);
+                const newMaxDate = new Date(maxTs + bufferTime);
+
+                instanceRef.current.updateOption({
+                    minDate: formatDate(newMinDate),
+                    maxDate: formatDate(newMaxDate)
+                });
+            }
+        }
+
+        // 3. 设置数据
+        instanceRef.current.setRecords(records);
+        
     }, [records]);
 
     useEffect(() => {
