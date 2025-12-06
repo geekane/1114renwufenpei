@@ -129,10 +129,21 @@ const GanttChart = () => {
                         color: (args) => {
                             const record = args.data;
                             if (record && !record.is_completed && record.end) {
-                                const today = dayjs().format('YYYY-MM-DD');
-                                if (today > record.end) return 'red';
+                                // 使用 dayjs 按天比较：如果 结束日期 在 今天 之前 (不包含今天)
+                                if (dayjs(record.end).isBefore(dayjs(), 'day')) {
+                                    return 'red';
+                                }
                             }
                             return '#24292f';
+                        },
+                        fontWeight: (args) => {
+                            const record = args.data;
+                            if (record && !record.is_completed && record.end) {
+                                if (dayjs(record.end).isBefore(dayjs(), 'day')) {
+                                    return 'bold';
+                                }
+                            }
+                            return 'normal';
                         }
                     }
                 },
@@ -175,10 +186,14 @@ const GanttChart = () => {
             labelTextStyle: { fontFamily: 'Arial, sans-serif', fontSize: 12, textAlign: 'left', color: '#24292f' },
             barStyle: {
                 width: 24,
-                barColor: (record) => {
+                barColor: (item) => {
+                    // 兼容可能得参数差异，确保拿到 record 对象
+                    const record = item?.record || item;
                     if (record && !record.is_completed && record.end) {
-                        const today = dayjs().format('YYYY-MM-DD');
-                        if (today > record.end) return 'red';
+                        // 逻辑：结束日期 < 今天
+                        if (dayjs(record.end).isBefore(dayjs(), 'day')) {
+                            return 'red';
+                        }
                     }
                     return '#3b82f6';
                 },
