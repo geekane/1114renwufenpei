@@ -108,7 +108,8 @@ const GanttChart = () => {
 
     // --- 1. 核心配置提取 (完整版) ---
     // 包含所有静态配置，确保 updateOption 时不会丢失任何样式
-    const baseOptions = useMemo(() => ({
+    // [DEBUG] 暂时移除 useMemo 以确保配置实时更新，并添加日志
+    const baseOptions = {
         taskListTable: {
             columns: [
                 {
@@ -118,23 +119,24 @@ const GanttChart = () => {
                     cellType: 'checkbox',
                     style: { textAlign: 'center' }
                 },
-                {
-                    field: 'title',
-                    title: '任务名称',
-                    width: 250,
+                { 
+                    field: 'title', 
+                    title: '任务名称', 
+                    width: 250, 
                     sort: true,
-                    tree: true,
+                    tree: true, 
                     editor: 'input-editor',
                     style: {
                         color: (args) => {
                             const record = args.data;
+                            let color = '#24292f';
                             if (record && !record.is_completed && record.end) {
-                                // 使用 dayjs 按天比较：如果 结束日期 在 今天 之前 (不包含今天)
-                                if (dayjs(record.end).isBefore(dayjs(), 'day')) {
-                                    return 'red';
+                                const isOverdue = dayjs(record.end).isBefore(dayjs(), 'day');
+                                if (isOverdue) {
+                                    color = 'red';
                                 }
                             }
-                            return '#24292f';
+                            return color;
                         },
                         fontWeight: (args) => {
                             const record = args.data;
@@ -187,15 +189,26 @@ const GanttChart = () => {
             barStyle: {
                 width: 24,
                 barColor: (item) => {
-                    // 兼容可能得参数差异，确保拿到 record 对象
                     const record = item?.record || item;
-                    if (record && !record.is_completed && record.end) {
-                        // 逻辑：结束日期 < 今天
-                        if (dayjs(record.end).isBefore(dayjs(), 'day')) {
-                            return 'red';
+                    let color = '#3b82f6';
+                    
+                    if (record) {
+                        const today = dayjs();
+                        const endDate = record.end ? dayjs(record.end) : null;
+                        const isBeforeToday = endDate ? endDate.isBefore(today, 'day') : false;
+                        
+                        // 打印日志追踪特定任务（比如第4个任务或所有任务）
+                        // 限制日志数量，避免控制台爆炸，只打印前几个或特定条件的
+                        if (isBeforeToday && !record.is_completed) {
+                             console.log(`[DEBUG BAR COLOR] Task: ${record.title}, End: ${record.end}, IsBeforeToday: ${isBeforeToday}, Completed: ${record.is_completed} -> RED`);
+                             color = 'red';
+                        } else if (record.title && record.title.includes('新任务')) {
+                             // 针对截图中"新任务"的特别调试
+                             console.log(`[DEBUG BAR COLOR] Task: ${record.title}, End: ${record.end}, IsBeforeToday: ${isBeforeToday}, Completed: ${record.is_completed} -> ${color}`);
                         }
                     }
-                    return '#3b82f6';
+                    
+                    return color;
                 },
                 completedBarColor: '#10b981',
                 cornerRadius: 6,
@@ -247,7 +260,7 @@ const GanttChart = () => {
         rowSeriesNumber: { title: '#', width: 40, headerStyle: { bgColor: '#f9fafb', borderColor: '#d1d5db' }, style: { borderColor: '#d1d5db' } },
         scrollStyle: { visible: 'scrolling', width: 8, scrollRailColor: '#f3f4f6', scrollSliderColor: '#d1d5db' },
         overscrollBehavior: 'none'
-    }), []);
+    };
 
     // 2. Fetch Data
     const fetchData = async () => {
