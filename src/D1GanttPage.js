@@ -95,7 +95,6 @@ const GanttChart = () => {
     const containerRef = useRef(null);
     const instanceRef = useRef(null);
     const isUpdatingExternally = useRef(false);
-    // 关键：用于跳过首次 useEffect 执行
     const isFirstRun = useRef(true);
     
     // State
@@ -114,13 +113,14 @@ const GanttChart = () => {
     const fetchData = async () => {
         if (!storeId) return;
         setIsLoading(true);
-        console.log(`Fetching data for store: ${storeId}`);
+        console.log(`[DEBUG] Fetching data for store: ${storeId}`);
         try {
             const response = await fetch(`/api/data/${storeId}`);
             if (!response.ok) throw new Error(response.statusText);
             const data = await response.json();
 
             if (Array.isArray(data.records)) {
+                console.log(`[DEBUG] API Data received. Records count: ${data.records.length}`);
                 const processRecords = (nodes) => {
                     const mappedNodes = nodes.map(node => {
                         const boolCompleted = node.is_completed === 1 || node.is_completed === true;
@@ -132,7 +132,6 @@ const GanttChart = () => {
                         };
                     });
                     
-                    // 自然排序
                     return mappedNodes.sort((a, b) => {
                         const titleA = a.title ? String(a.title) : '';
                         const titleB = b.title ? String(b.title) : '';
@@ -142,6 +141,7 @@ const GanttChart = () => {
                 
                 setRecords(processRecords(data.records));
             } else {
+                console.warn('[DEBUG] No records array in API response');
                 setRecords([]);
             }
 
@@ -151,7 +151,7 @@ const GanttChart = () => {
                 setMarkLines([]);
             }
         } catch (error) {
-            console.error('Data Load Error:', error);
+            console.error('[DEBUG ERROR] Data Load Error:', error);
             message.error("数据加载失败");
         } finally {
             setIsLoading(false);
@@ -173,7 +173,7 @@ const GanttChart = () => {
     // Initialize Gantt Instance
     useEffect(() => {
         if (containerRef.current && !instanceRef.current) {
-            console.log("Initializing Gantt Instance...");
+            console.log("[DEBUG] Initializing Gantt Instance...");
             
             // Register Editors
             const inputEditor = new InputEditor();
@@ -286,7 +286,6 @@ const GanttChart = () => {
                         }
                     ]
                 },
-                // 使用 State 中的日期初始化 (这样第一次渲染就是正确的)
                 minDate: viewRange[0].format('YYYY-MM-DD'),
                 maxDate: viewRange[1].format('YYYY-MM-DD'),
                 rowSeriesNumber: { title: '#', width: 40, headerStyle: { bgColor: '#f9fafb', borderColor: '#d1d5db' }, style: { borderColor: '#d1d5db' } },
@@ -296,6 +295,10 @@ const GanttChart = () => {
 
             const ganttInstance = new VTableGantt.Gantt(containerRef.current, option);
             instanceRef.current = ganttInstance;
+            
+            // 挂载到 window 方便调试
+            window.ganttInstance = ganttInstance;
+            console.log("[DEBUG] Gantt Instance created and assigned to window.ganttInstance");
 
             // --- Listener ---
             if (ganttInstance.taskListTableInstance) {
@@ -400,33 +403,46 @@ const GanttChart = () => {
         };
     }, []);
 
-    // --- 关键修复：监听 viewRange 的变化 ---
+    // --- 关键调试：监听 viewRange 的变化 ---
     useEffect(() => {
-        // 1. 如果是首次运行，跳过（因为初始化时已经设置了正确的日期）
         if (isFirstRun.current) {
+            console.log('[DEBUG] First run skipped for updateOption.');
             isFirstRun.current = false;
             return;
         }
 
-        if (!instanceRef.current || !viewRange || viewRange.length < 2) return;
+        if (!instanceRef.current) {
+            console.error('[DEBUG ERROR] Instance not ready during ViewRange update');
+            return;
+        }
 
         const minStr = viewRange[0].format('YYYY-MM-DD');
         const maxStr = viewRange[1].format('YYYY-MM-DD');
         
-        console.log(`[ViewRange Changed] Updating Gantt to: ${minStr} - ${maxStr}`);
-
-        // 2. 调用 updateOption
-        // 传入 records 是为了触发更完整的重绘，防止仅更新日期导致布局问题
-        instanceRef.current.updateOption({
-            minDate: minStr,
-            maxDate: maxStr,
-            records: records 
-        });
-    }, [viewRange]); 
+        console.log(`[DEBUG] ViewRange Triggered: ${minStr} to ${maxStr}`);
+        console.log(`[DEBUG] Records count available for update: ${records?.length}`);
+        
+        // 尝试捕获 updateOption 的错误
+        try {
+            const updateParams = {
+                minDate: minStr,
+                maxDate: maxStr,
+                records: records
+            };
+            console.log('[DEBUG] Calling updateOption with params:', updateParams);
+            
+            instanceRef.current.updateOption(updateParams);
+            
+            console.log('[DEBUG] updateOption executed successfully.');
+        } catch (err) {
+            console.error('[DEBUG CRITICAL] Error during updateOption:', err);
+        }
+    }, [viewRange]); // 移除 records 依赖，防止死循环，仅日期变化时触发更新，数据更新走下面的 setRecords
 
     // --- 数据变化时：更新 Gantt ---
     useEffect(() => {
         if (!instanceRef.current) return;
+        console.log(`[DEBUG] setRecords triggered. Count: ${records?.length}`);
         instanceRef.current.setRecords(records);
     }, [records]);
 
@@ -437,6 +453,7 @@ const GanttChart = () => {
     // --- 用户手动改变日期范围 ---
     const handleDateRangeChange = (dates) => {
         if (dates && dates.length === 2) {
+            console.log('[DEBUG] User changed RangePicker');
             setViewRange(dates);
         }
     };
@@ -485,7 +502,6 @@ const GanttChart = () => {
     };
 
     return (
-        // 确保容器高度存在
         <div style={{ height: '90vh', width: '100%', display: 'flex', flexDirection: 'column', position: 'relative' }}>
             {contextMenu.visible && (
                 <div 
