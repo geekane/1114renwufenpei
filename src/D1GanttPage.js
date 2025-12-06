@@ -118,13 +118,23 @@ const GanttChart = () => {
                     cellType: 'checkbox',
                     style: { textAlign: 'center' }
                 },
-                { 
-                    field: 'title', 
-                    title: '任务名称', 
-                    width: 250, 
+                {
+                    field: 'title',
+                    title: '任务名称',
+                    width: 250,
                     sort: true,
-                    tree: true, 
-                    editor: 'input-editor' 
+                    tree: true,
+                    editor: 'input-editor',
+                    style: {
+                        color: (args) => {
+                            const record = args.data;
+                            if (record && !record.is_completed && record.end) {
+                                const today = dayjs().format('YYYY-MM-DD');
+                                if (today > record.end) return 'red';
+                            }
+                            return '#24292f';
+                        }
+                    }
                 },
                 { field: 'start', title: '开始日期', width: 100, sort: true, editor: 'date-editor' },
                 { field: 'end', title: '结束日期', width: 100, sort: true, editor: 'date-editor' },
@@ -165,7 +175,13 @@ const GanttChart = () => {
             labelTextStyle: { fontFamily: 'Arial, sans-serif', fontSize: 12, textAlign: 'left', color: '#24292f' },
             barStyle: {
                 width: 24,
-                barColor: '#3b82f6',
+                barColor: (record) => {
+                    if (record && !record.is_completed && record.end) {
+                        const today = dayjs().format('YYYY-MM-DD');
+                        if (today > record.end) return 'red';
+                    }
+                    return '#3b82f6';
+                },
                 completedBarColor: '#10b981',
                 cornerRadius: 6,
                 borderWidth: 1,
