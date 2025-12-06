@@ -122,7 +122,7 @@ const GanttChart = () => {
                 { 
                     field: 'title', 
                     title: '任务名称', 
-                    width: 150, 
+                    width: 180, 
                     sort: true,
                     tree: true, 
                     editor: 'input-editor',
@@ -154,7 +154,7 @@ const GanttChart = () => {
                 {
                     field: 'progress',
                     title: '进度',
-                    width: 20,
+                    width: 0,
                     sort: true,
                     headerStyle: { borderColor: '#e1e4e8' },
                     style: { borderColor: '#e1e4e8', color: 'green' }
