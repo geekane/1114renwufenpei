@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { Button, Space, message, DatePicker } from 'antd'; // 1. 引入 DatePicker
-import dayjs from 'dayjs'; // 1. 引入 dayjs 处理日期
+import { Button, Space, message, DatePicker } from 'antd';
+import dayjs from 'dayjs';
 import * as VTable from '@visactor/vtable';
 import * as VTableGantt from '@visactor/vtable-gantt';
 import { DateInputEditor, InputEditor } from '@visactor/vtable-editors';
@@ -102,10 +102,10 @@ const GanttChart = () => {
     const [isLoading, setIsLoading] = useState(false);
     const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0, record: null });
     
-    // 新增：用于控制日期范围的 State (默认显示未来3个月)
+    // --- 默认时间范围：今天 -> 2个月后 ---
     const [viewRange, setViewRange] = useState([
         dayjs(), 
-        dayjs().add(3, 'month')
+        dayjs().add(2, 'month')
     ]);
 
     // 1. Fetch Data
@@ -284,7 +284,7 @@ const GanttChart = () => {
                         }
                     ]
                 },
-                // 使用 State 中的日期初始化
+                // --- 使用 State 中的日期初始化 (默认 Today -> +2 Months) ---
                 minDate: viewRange[0].format('YYYY-MM-DD'),
                 maxDate: viewRange[1].format('YYYY-MM-DD'),
                 rowSeriesNumber: { title: '#', width: 40, headerStyle: { bgColor: '#f9fafb', borderColor: '#d1d5db' }, style: { borderColor: '#d1d5db' } },
@@ -398,47 +398,10 @@ const GanttChart = () => {
         };
     }, []);
 
-    // --- 数据变化时：自动更新日期范围 (Auto Fit) ---
+    // --- 数据变化时：仅更新数据，保持默认时间范围 (Today -> +2M) ---
+    // 用户可以通过上方的日期选择器手动更改
     useEffect(() => {
         if (!instanceRef.current) return;
-
-        if (records && records.length > 0) {
-            let minTs = Infinity;
-            let maxTs = -Infinity;
-
-            const traverse = (nodes) => {
-                nodes.forEach(node => {
-                    if (node.start) {
-                        const s = new Date(node.start).getTime();
-                        if (!isNaN(s) && s < minTs) minTs = s;
-                    }
-                    if (node.end) {
-                        const e = new Date(node.end).getTime();
-                        if (!isNaN(e) && e > maxTs) maxTs = e;
-                    }
-                    if (node.children && node.children.length > 0) {
-                        traverse(node.children);
-                    }
-                });
-            };
-            traverse(records);
-
-            // 如果找到了有效的日期范围，自动调整
-            if (minTs !== Infinity && maxTs !== -Infinity) {
-                const bufferTime = 3 * 24 * 60 * 60 * 1000; // 3天缓冲
-                const newMinDate = dayjs(minTs - bufferTime);
-                const newMaxDate = dayjs(maxTs + bufferTime);
-                
-                // 更新 UI 上的选择器状态
-                setViewRange([newMinDate, newMaxDate]);
-                
-                // 更新 Gantt 图表配置
-                instanceRef.current.updateOption({
-                    minDate: newMinDate.format('YYYY-MM-DD'),
-                    maxDate: newMaxDate.format('YYYY-MM-DD')
-                });
-            }
-        }
         instanceRef.current.setRecords(records);
     }, [records]);
 
@@ -446,11 +409,11 @@ const GanttChart = () => {
         if (instanceRef.current && markLines) instanceRef.current.updateMarkLine(markLines);
     }, [markLines]);
 
-    // --- 用户手动改变日期范围 ---
+    // --- 用户手动改变日期范围 (自定义能力) ---
     const handleDateRangeChange = (dates) => {
         if (!dates || dates.length < 2) return;
         
-        setViewRange(dates); // 更新 React 状态
+        setViewRange(dates); // 更新 UI
         
         if (instanceRef.current) {
             instanceRef.current.updateOption({
@@ -522,7 +485,7 @@ const GanttChart = () => {
             <div style={{ padding: '10px', borderBottom: '1px solid #eee', display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: '50px', flexShrink: 0 }}>
                 <Space>
                    <span style={{fontWeight:'bold'}}>项目排期表</span>
-                   {/* 新增：日期范围选择器 */}
+                   {/* 日期范围选择器：允许手动调整，默认显示 Today -> +2 Months */}
                    <span style={{ marginLeft: 20 }}>视图范围：</span>
                    <RangePicker 
                        value={viewRange}
