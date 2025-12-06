@@ -188,35 +188,113 @@ const GanttChart = () => {
             labelTextStyle: { fontFamily: 'Arial, sans-serif', fontSize: 12, textAlign: 'left', color: '#24292f' },
             barStyle: {
                 width: 24,
-                barColor: (args) => {
-                    // VTable Gantt barColor callback args usually contains the record directly or inside a property
-                    // Let's try to be robust and also debug the args structure
-                    const record = args?.taskRecord || args?.record || args;
-                    
-                    let color = '#3b82f6'; // 默认蓝色
-                    
-                    if (record) {
-                        const today = dayjs();
-                        const endDate = record.end ? dayjs(record.end) : null;
-                        // 逻辑：结束日期 < 今天 (不含今天)
-                        const isBeforeToday = endDate ? endDate.isBefore(today, 'day') : false;
-                        const isCompleted = record.is_completed === true || record.is_completed === 1;
-
-                        if (isBeforeToday && !isCompleted) {
-                             color = 'red';
-                        }
-                        
-                        // 减少日志输出，仅在确实触发变色或特定任务时输出
-                        if (color === 'red' || (record.title && record.title.includes('新任务'))) {
-                            console.log(`[DEBUG BAR] Color: ${color}, Title: ${record.title}, End: ${record.end}, Overdue: ${isBeforeToday}, Completed: ${isCompleted}`);
-                        }
-                    }
-                    return color;
-                },
+                barColor: '#3b82f6', // 这里的设置可能被忽略，因为我们会使用 customLayout
                 completedBarColor: '#10b981',
                 cornerRadius: 6,
                 borderWidth: 1,
                 borderColor: '#e5e7eb'
+            },
+            customLayout: (args) => {
+                // 解构参数
+                const { width, height, taskRecord, ganttInstance } = args;
+                
+                // ---------------------------------------------------------
+                // 1. 计算颜色逻辑
+                // ---------------------------------------------------------
+                let barColor = '#3b82f6'; // 默认蓝色
+                const isCompleted = taskRecord.is_completed === true || taskRecord.is_completed === 1;
+                
+                if (taskRecord && !isCompleted && taskRecord.end) {
+                     const today = dayjs();
+                     const endDate = dayjs(taskRecord.end);
+                     // 逻辑：结束日期 < 今天 (不含今天)
+                     if (endDate.isBefore(today, 'day')) {
+                         barColor = 'red'; // 逾期变红
+                     }
+                }
+                
+                // ---------------------------------------------------------
+                // 2. 创建图形容器 (使用 VRender)
+                // ---------------------------------------------------------
+                // 尝试从 VTableGantt 获取 VRender，如果不存在则尝试全局变量或其他方式
+                // 注意：根据文档 VTableGantt.VRender 通常是可用的
+                const VRender = VTableGantt.VRender;
+                if (!VRender) {
+                    console.error('[CustomLayout] VRender not found in VTableGantt export!');
+                    return {};
+                }
+
+                const container = new VRender.Group({
+                    width,
+                    height,
+                    x: 0,
+                    y: 0
+                });
+
+                // ---------------------------------------------------------
+                // 3. 绘制背景条 (代表任务总长度，颜色根据状态变化)
+                // ---------------------------------------------------------
+                const bgRect = new VRender.Rect({
+                    width: width,
+                    height: height,
+                    fill: barColor,
+                    cornerRadius: 6,
+                    stroke: '#e5e7eb',
+                    lineWidth: 1
+                });
+                container.add(bgRect);
+
+                // ---------------------------------------------------------
+                // 4. 绘制进度条 (已完成部分，覆盖在背景之上)
+                // ---------------------------------------------------------
+                const progressVal = parseFloat(taskRecord.progress) || 0;
+                if (progressVal > 0) {
+                    const progressWidth = Math.min(width, width * (progressVal / 100));
+                    const progressRect = new VRender.Rect({
+                        width: progressWidth,
+                        height: height,
+                        fill: '#10b981', // 绿色
+                        cornerRadius: 6 // 保持圆角一致
+                    });
+                    container.add(progressRect);
+                }
+
+                // ---------------------------------------------------------
+                // 5. 绘制文字 (显示任务名称和进度)
+                // ---------------------------------------------------------
+                const textContent = `${taskRecord.title} (${progressVal}%)`;
+                const text = new VRender.Text({
+                    text: textContent,
+                    fontSize: 12,
+                    fontFamily: 'Arial, sans-serif',
+                    fill: '#24292f', // 文字颜色
+                    x: width + 5, // 文字显示在条形右侧，避免遮挡？或者内部？
+                                  // 原版配置是: labelText: '{title} ({progress}%)', labelTextStyle: { ... textAlign: 'left' }
+                                  // 通常 VTable Gantt 的 label 是独立渲染的。
+                                  // 如果我们用了 customLayout，还需要自己画文字吗？
+                                  // 根据文档，customLayout 返回 rootContainer 后，系统可能还会尝试画 label？
+                                  // 为了稳妥，我们把文字画在条形内部或旁边。
+                                  // 这里模仿原版效果，放在条形右侧可能更好看，或者内部。
+                                  // 考虑到条形可能很短，放在右侧比较安全。
+                    y: height / 2,
+                    textBaseline: 'middle'
+                });
+                
+                // 这里有一个权衡：如果文字放在右侧，需要确保 container 足够大？
+                // customLayout 的 args.width 是条形的宽度。
+                // 如果我们在 container 里画了超出 width 的东西，可能会被裁剪。
+                // 实际上，VTable Gantt 的 label 默认是在条形右侧或内部。
+                // 如果我们只负责画条形（bar），文字由 labelText 配置控制。
+                // 让我们先不画文字，看看 labelText 是否依然生效。
+                // 如果 labelText 不生效，我们再把文字加回来。
+                
+                // 修正：为了保险，我先不画文字，依赖 external label 配置。
+                // 如果发现文字没了，我们再加。
+                
+                return {
+                    rootContainer: container,
+                    renderDefaultText: true // 关键属性：尝试告诉引擎继续渲染默认文本
+                };
             },
             progressAdjustable: true
         },
