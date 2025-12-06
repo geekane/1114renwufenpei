@@ -110,12 +110,9 @@ const GanttChart = () => {
             const data = await response.json();
 
             if (Array.isArray(data.records)) {
-                // 将后端返回的 0/1 转换为 false/true
                 const processRecords = (nodes) => {
-                    // 1. 先进行映射处理
                     const mappedNodes = nodes.map(node => {
                         const boolCompleted = node.is_completed === 1 || node.is_completed === true;
-                        // 递归处理子节点
                         const children = node.children ? processRecords(node.children) : undefined;
                         return {
                             ...node,
@@ -124,11 +121,10 @@ const GanttChart = () => {
                         };
                     });
 
-                    // 2. 增加排序逻辑：使用 natural sort (自然排序)
-                    // 这会让 "1. xxx", "2. xxx", "10. xxx" 按数字顺序排列
+                    // 排序逻辑：增加 title 是否存在的判断，防止报错
                     return mappedNodes.sort((a, b) => {
-                        const titleA = a.title || '';
-                        const titleB = b.title || '';
+                        const titleA = a.title ? String(a.title) : '';
+                        const titleB = b.title ? String(b.title) : '';
                         return titleA.localeCompare(titleB, 'zh-CN', { numeric: true });
                     });
                 };
@@ -151,12 +147,10 @@ const GanttChart = () => {
         }
     };
 
-    // Initial Fetch
     useEffect(() => {
         fetchData();
     }, [storeId]);
 
-    // Close Context Menu
     useEffect(() => {
         const handleClick = () => setContextMenu({ visible: false, x: 0, y: 0, record: null });
         window.addEventListener('click', handleClick);
@@ -174,7 +168,7 @@ const GanttChart = () => {
             const dateEditor = new DateInputEditor();
             VTable.register.editor('date-editor', dateEditor);
 
-            // Columns 配置
+            // Columns
             const columns = [
                 {
                     field: 'is_completed',
@@ -187,7 +181,7 @@ const GanttChart = () => {
                     field: 'title', 
                     title: '任务名称', 
                     width: 250, 
-                    sort: true, // 保留 UI 上的排序箭头
+                    sort: true,
                     tree: true, 
                     editor: 'input-editor' 
                 },
@@ -203,7 +197,6 @@ const GanttChart = () => {
                 }
             ];
 
-            // 初始占位日期，稍后会根据数据自动更新
             const today = new Date();
             const initMaxDate = new Date();
             initMaxDate.setMonth(today.getMonth() + 1);
@@ -213,7 +206,7 @@ const GanttChart = () => {
                 markLine: [],
                 taskListTable: {
                     columns: columns,
-                    tableWidth: 'auto',
+                    tableWidth: 'auto', // 如果还不行，可以尝试改为固定数值如 400
                     minTableWidth: 350,
                     maxTableWidth: 800
                 },
@@ -244,16 +237,10 @@ const GanttChart = () => {
                     },
                     progressAdjustable: true
                 },
-                // --- 时间轴配置 (显示月/日) ---
+                // --- 时间轴配置 ---
                 timelineHeader: {
-                    verticalLine: {
-                        lineWidth: 1,
-                        lineColor: '#d1d5db'
-                    },
-                    horizontalLine: {
-                        lineWidth: 1,
-                        lineColor: '#d1d5db'
-                    },
+                    verticalLine: { lineWidth: 1, lineColor: '#d1d5db' },
+                    horizontalLine: { lineWidth: 1, lineColor: '#d1d5db' },
                     backgroundColor: '#f9fafb',
                     colWidth: 40,
                     scales: [
@@ -261,6 +248,8 @@ const GanttChart = () => {
                             unit: 'month',
                             step: 1,
                             format(date) {
+                                // 增加判空，防止渲染时崩溃
+                                if (!date || !date.startDate) return '';
                                 const d = date.startDate;
                                 return `${d.getFullYear()}年${d.getMonth() + 1}月`;
                             },
@@ -268,8 +257,8 @@ const GanttChart = () => {
                                 fontSize: 14,
                                 fontWeight: 'bold',
                                 color: '#111827',
-                                textAlign: 'left', // 靠左显示
-                                textStick: true,   // 滚动吸顶，关键！
+                                textAlign: 'left',
+                                textStick: true, 
                                 padding: [0, 10],
                                 backgroundColor: '#f9fafb',
                                 borderBottom: '1px solid #d1d5db' 
@@ -300,14 +289,12 @@ const GanttChart = () => {
             const ganttInstance = new VTableGantt.Gantt(containerRef.current, option);
             instanceRef.current = ganttInstance;
 
-            // --- 监听内部表格 Checkbox ---
+            // --- Listener ---
             if (ganttInstance.taskListTableInstance) {
                 ganttInstance.taskListTableInstance.on('checkbox_state_change', (args) => {
                     const { col, row, checked } = args;
                     const record = ganttInstance.taskListTableInstance.getRecordByCell(col, row);
-                    
                     if (record) {
-                        console.log(`[CHECKBOX EVENT] Task: ${record.title} (ID:${record.id}) -> ${checked}`);
                         setRecords(prev => {
                             const updateRecursive = (nodes) => {
                                 return nodes.map(node => {
@@ -328,7 +315,6 @@ const GanttChart = () => {
                 });
             }
 
-            // Cell Edit
             const handleCellEdit = (args) => {
                 const { col, row, field, value } = args;
                 const record = instanceRef.current.getRecordByCell(col, row);
@@ -352,7 +338,6 @@ const GanttChart = () => {
                 });
             };
 
-            // Task Drag
             const handleTaskChange = (args) => {
                 if (isUpdatingExternally.current) {
                     requestAnimationFrame(() => isUpdatingExternally.current = false);
@@ -361,7 +346,6 @@ const GanttChart = () => {
                 setRecords(args.records);
             };
             
-            // Marklines
             const handleMarkLineCreate = ({ data, position }) => {
                 createPopup({ date: data.startDate, content: '' }, position, async value => {
                   const newMarkLine = {
@@ -385,7 +369,6 @@ const GanttChart = () => {
                 });
             };
 
-            // Context Menu
             const handleContextMenu = (args) => {
                 args.event.preventDefault();
                 const record = instanceRef.current.getRecordByCell(args.col, args.row);
@@ -394,7 +377,6 @@ const GanttChart = () => {
                 }
             };
 
-            // 监听外层事件
             ganttInstance.on('click_markline_create', handleMarkLineCreate);
             ganttInstance.on('click_markline_content', handleMarkLineClick);
             ganttInstance.on('change_task', handleTaskChange);
@@ -410,61 +392,49 @@ const GanttChart = () => {
         };
     }, []);
 
-    // --- 同步 State 到 Gantt (自动计算最早/最晚日期) ---
+    // --- State Sync ---
     useEffect(() => {
         if (!instanceRef.current) return;
 
-        // 1. 如果有数据，计算所有任务中最早的开始时间和最晚的结束时间
         if (records && records.length > 0) {
             let minTs = Infinity;
             let maxTs = -Infinity;
 
             const traverse = (nodes) => {
                 nodes.forEach(node => {
-                    // 检查开始时间
                     if (node.start) {
                         const s = new Date(node.start).getTime();
                         if (!isNaN(s) && s < minTs) minTs = s;
                     }
-                    // 检查结束时间
                     if (node.end) {
                         const e = new Date(node.end).getTime();
                         if (!isNaN(e) && e > maxTs) maxTs = e;
                     }
-                    // 递归检查子任务
                     if (node.children && node.children.length > 0) {
                         traverse(node.children);
                     }
                 });
             };
-
             traverse(records);
 
-            // 2. 如果找到了有效的日期范围，更新时间轴配置
             if (minTs !== Infinity && maxTs !== -Infinity) {
-                // 前后各增加 3 天的缓冲
                 const bufferTime = 3 * 24 * 60 * 60 * 1000; 
-                
                 const newMinDate = new Date(minTs - bufferTime);
                 const newMaxDate = new Date(maxTs + bufferTime);
-
                 instanceRef.current.updateOption({
                     minDate: formatDate(newMinDate),
                     maxDate: formatDate(newMaxDate)
                 });
             }
         }
-
-        // 3. 设置数据
         instanceRef.current.setRecords(records);
-        
     }, [records]);
 
     useEffect(() => {
         if (instanceRef.current && markLines) instanceRef.current.updateMarkLine(markLines);
     }, [markLines]);
 
-    // --- 按钮操作 ---
+    // --- Buttons ---
     const handleRefresh = () => fetchData();
 
     const handleSaveChanges = async () => {
@@ -508,7 +478,10 @@ const GanttChart = () => {
     };
 
     return (
-        <div style={{ height: '100%', width: '100%', display: 'flex', flexDirection: 'column', position: 'relative' }}>
+        // --- 关键修改：height: '90vh' ---
+        // 这里的 height 决定了图表的高度。如果父级没有定高，100% 会是 0。
+        // 使用 90vh (视口高度的 90%) 确保它一定能显示。
+        <div style={{ height: '90vh', width: '100%', display: 'flex', flexDirection: 'column', position: 'relative' }}>
             {contextMenu.visible && (
                 <div 
                     style={{
@@ -523,7 +496,7 @@ const GanttChart = () => {
                 </div>
             )}
             
-            <div style={{ padding: '10px', borderBottom: '1px solid #eee', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ padding: '10px', borderBottom: '1px solid #eee', display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: '50px', flexShrink: 0 }}>
                 <Space>
                    <span style={{fontWeight:'bold'}}>项目排期表</span>
                 </Space>
@@ -537,7 +510,7 @@ const GanttChart = () => {
                 </Space>
             </div>
             
-            <div ref={containerRef} style={{ flex: 1, width: '100%' }} />
+            <div ref={containerRef} style={{ flex: 1, width: '100%', minHeight: '400px' }} />
         </div>
     );
 };
