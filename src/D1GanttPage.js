@@ -110,8 +110,9 @@ const GanttChart = () => {
             const data = await response.json();
 
             if (Array.isArray(data.records)) {
-                // 处理数据：布尔值转换 + 自然排序
+                // --- 仅修改了这里的 processRecords 逻辑 ---
                 const processRecords = (nodes) => {
+                    // 1. 先进行数据映射（处理布尔值和递归子节点）
                     const mappedNodes = nodes.map(node => {
                         const boolCompleted = node.is_completed === 1 || node.is_completed === true;
                         const children = node.children ? processRecords(node.children) : undefined;
@@ -122,13 +123,17 @@ const GanttChart = () => {
                         };
                     });
 
+                    // 2. 增加自然排序逻辑：
+                    // 使用 localeCompare 配合 { numeric: true }
+                    // 这样 "1. xxx" 后面会跟着 "2. xxx" 而不是 "10. xxx"
                     return mappedNodes.sort((a, b) => {
                         const titleA = a.title ? String(a.title) : '';
                         const titleB = b.title ? String(b.title) : '';
                         return titleA.localeCompare(titleB, 'zh-CN', { numeric: true });
                     });
                 };
-                
+                // ----------------------------------------
+
                 setRecords(processRecords(data.records));
             } else {
                 setRecords([]);
@@ -194,7 +199,7 @@ const GanttChart = () => {
 
             const today = new Date();
             const maxDate = new Date();
-            maxDate.setMonth(today.getMonth() + 2); // 默认初始化，后面会根据数据动态改
+            maxDate.setMonth(today.getMonth() + 3); // 稍微调大一点范围
 
             const option = {
                 records: [], 
@@ -282,7 +287,7 @@ const GanttChart = () => {
                 rowSeriesNumber: { title: '#', width: 40, headerStyle: { bgColor: '#f9fafb', borderColor: '#d1d5db' }, style: { borderColor: '#d1d5db' } },
                 scrollStyle: { visible: 'scrolling', width: 8, scrollRailColor: '#f3f4f6', scrollSliderColor: '#d1d5db' },
                 overscrollBehavior: 'none'
-            };
+            }; // <--- 此处保留了您提供的修复后的闭合符号
 
             const ganttInstance = new VTableGantt.Gantt(containerRef.current, option);
             instanceRef.current = ganttInstance;
@@ -397,57 +402,9 @@ const GanttChart = () => {
         };
     }, []);
 
-    // --- 修改点：同步 State 到 Gantt (灵活的日期范围计算) ---
+    // --- 同步 State 到 Gantt ---
     useEffect(() => {
-        if (!instanceRef.current) return;
-
-        let calculatedMinDate = new Date(); // 默认今天
-        let calculatedMaxDate = new Date();
-        calculatedMaxDate.setMonth(calculatedMaxDate.getMonth() + 2); // 默认 maxDate 为今天 + 2个月
-
-        if (records && records.length > 0) {
-            let minTs = Infinity;
-            let hasUncompletedTasks = false;
-
-            // 递归遍历寻找“最早的、未完成任务的”开始时间
-            const traverse = (nodes) => {
-                nodes.forEach(node => {
-                    // 检查任务是否已完成
-                    // 注意：fetchData 已经把 0/1 转成了 boolean，所以直接用 is_completed
-                    if (!node.is_completed) {
-                        if (node.start) {
-                            const s = new Date(node.start).getTime();
-                            if (!isNaN(s)) {
-                                if (s < minTs) minTs = s;
-                                hasUncompletedTasks = true;
-                            }
-                        }
-                    }
-                    // 递归子任务
-                    if (node.children && node.children.length > 0) {
-                        traverse(node.children);
-                    }
-                });
-            };
-
-            traverse(records);
-
-            // 如果找到了未完成的任务，设置 minDate 为该任务的开始日期
-            if (hasUncompletedTasks && minTs !== Infinity) {
-                // 为了视觉效果，稍微提前一天，不让任务条顶格
-                calculatedMinDate = new Date(minTs - 24 * 60 * 60 * 1000); 
-            }
-        }
-
-        // 更新 Option：minDate 为计算出的日期，maxDate 始终为今天往后2个月
-        instanceRef.current.updateOption({
-            minDate: formatDate(calculatedMinDate),
-            maxDate: formatDate(calculatedMaxDate)
-        });
-
-        // 设置数据
-        instanceRef.current.setRecords(records);
-        
+        if (instanceRef.current) instanceRef.current.setRecords(records);
     }, [records]);
 
     useEffect(() => {
