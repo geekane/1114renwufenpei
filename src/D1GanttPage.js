@@ -20,7 +20,7 @@ function formatDate(date) {
     return year + '-' + month + '-' + day;
 }
 
-// 里程碑弹窗逻辑 (保持不变)
+// 里程碑弹窗逻辑
 function createPopup({ date, content }, position, callback) {
     let container = document.getElementById('live-demo-additional-container');
     if (!container) {
@@ -95,6 +95,8 @@ const GanttChart = () => {
     const containerRef = useRef(null);
     const instanceRef = useRef(null);
     const isUpdatingExternally = useRef(false);
+    // 关键：用于跳过首次 useEffect 执行
+    const isFirstRun = useRef(true);
     
     // State
     const [records, setRecords] = useState([]);
@@ -284,7 +286,7 @@ const GanttChart = () => {
                         }
                     ]
                 },
-                // 使用 State 中的日期初始化
+                // 使用 State 中的日期初始化 (这样第一次渲染就是正确的)
                 minDate: viewRange[0].format('YYYY-MM-DD'),
                 maxDate: viewRange[1].format('YYYY-MM-DD'),
                 rowSeriesNumber: { title: '#', width: 40, headerStyle: { bgColor: '#f9fafb', borderColor: '#d1d5db' }, style: { borderColor: '#d1d5db' } },
@@ -398,8 +400,14 @@ const GanttChart = () => {
         };
     }, []);
 
-    // --- 关键：监听 viewRange 的变化，同步到 VTable ---
+    // --- 关键修复：监听 viewRange 的变化 ---
     useEffect(() => {
+        // 1. 如果是首次运行，跳过（因为初始化时已经设置了正确的日期）
+        if (isFirstRun.current) {
+            isFirstRun.current = false;
+            return;
+        }
+
         if (!instanceRef.current || !viewRange || viewRange.length < 2) return;
 
         const minStr = viewRange[0].format('YYYY-MM-DD');
@@ -407,12 +415,14 @@ const GanttChart = () => {
         
         console.log(`[ViewRange Changed] Updating Gantt to: ${minStr} - ${maxStr}`);
 
-        // 调用 updateOption 更新日期
+        // 2. 调用 updateOption
+        // 传入 records 是为了触发更完整的重绘，防止仅更新日期导致布局问题
         instanceRef.current.updateOption({
             minDate: minStr,
-            maxDate: maxStr
+            maxDate: maxStr,
+            records: records 
         });
-    }, [viewRange]); // 只要 viewRange 变了，这里就会执行
+    }, [viewRange]); 
 
     // --- 数据变化时：更新 Gantt ---
     useEffect(() => {
@@ -426,7 +436,6 @@ const GanttChart = () => {
 
     // --- 用户手动改变日期范围 ---
     const handleDateRangeChange = (dates) => {
-        // 这里只更新 React 状态，具体的图表更新交给上面的 useEffect
         if (dates && dates.length === 2) {
             setViewRange(dates);
         }
@@ -476,6 +485,7 @@ const GanttChart = () => {
     };
 
     return (
+        // 确保容器高度存在
         <div style={{ height: '90vh', width: '100%', display: 'flex', flexDirection: 'column', position: 'relative' }}>
             {contextMenu.visible && (
                 <div 
