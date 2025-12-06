@@ -110,9 +110,10 @@ const GanttChart = () => {
             const data = await response.json();
 
             if (Array.isArray(data.records)) {
-                // 将后端返回的 0/1 转换为 false/true，防止 VTable 崩溃
+                // --- 仅修改了这里的 processRecords 逻辑 ---
                 const processRecords = (nodes) => {
-                    return nodes.map(node => {
+                    // 1. 先进行数据映射（处理布尔值和递归子节点）
+                    const mappedNodes = nodes.map(node => {
                         const boolCompleted = node.is_completed === 1 || node.is_completed === true;
                         const children = node.children ? processRecords(node.children) : undefined;
                         return {
@@ -121,7 +122,18 @@ const GanttChart = () => {
                             children: children
                         };
                     });
+
+                    // 2. 增加自然排序逻辑：
+                    // 使用 localeCompare 配合 { numeric: true }
+                    // 这样 "1. xxx" 后面会跟着 "2. xxx" 而不是 "10. xxx"
+                    return mappedNodes.sort((a, b) => {
+                        const titleA = a.title ? String(a.title) : '';
+                        const titleB = b.title ? String(b.title) : '';
+                        return titleA.localeCompare(titleB, 'zh-CN', { numeric: true });
+                    });
                 };
+                // ----------------------------------------
+
                 setRecords(processRecords(data.records));
             } else {
                 setRecords([]);
@@ -275,7 +287,7 @@ const GanttChart = () => {
                 rowSeriesNumber: { title: '#', width: 40, headerStyle: { bgColor: '#f9fafb', borderColor: '#d1d5db' }, style: { borderColor: '#d1d5db' } },
                 scrollStyle: { visible: 'scrolling', width: 8, scrollRailColor: '#f3f4f6', scrollSliderColor: '#d1d5db' },
                 overscrollBehavior: 'none'
-            }; // <--- 修复点：这里原来少了这个闭合符号
+            }; // <--- 此处保留了您提供的修复后的闭合符号
 
             const ganttInstance = new VTableGantt.Gantt(containerRef.current, option);
             instanceRef.current = ganttInstance;
