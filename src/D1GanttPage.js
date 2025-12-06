@@ -106,75 +106,116 @@ const GanttChart = () => {
         dayjs().add(2, 'month')
     ]);
 
-    // --- 1. 配置提取 (使用 useMemo 避免重复创建) ---
-    // 将这些配置提取出来，以便在 updateOption 时也能使用
-    const columnsConfig = useMemo(() => [
-        {
-            field: 'is_completed',
-            title: '✓',
-            width: 40,
-            cellType: 'checkbox',
-            style: { textAlign: 'center' }
-        },
-        { 
-            field: 'title', 
-            title: '任务名称', 
-            width: 250, 
-            sort: true,
-            tree: true, 
-            editor: 'input-editor' 
-        },
-        { field: 'start', title: '开始日期', width: 100, sort: true, editor: 'date-editor' },
-        { field: 'end', title: '结束日期', width: 100, sort: true, editor: 'date-editor' },
-        {
-            field: 'progress',
-            title: '进度',
-            width: 80,
-            sort: true,
-            headerStyle: { borderColor: '#e1e4e8' },
-            style: { borderColor: '#e1e4e8', color: 'green' }
-        }
-    ], []);
-
-    const timelineHeaderConfig = useMemo(() => ({
-        verticalLine: { lineWidth: 1, lineColor: '#d1d5db' },
-        horizontalLine: { lineWidth: 1, lineColor: '#d1d5db' },
-        backgroundColor: '#f9fafb',
-        colWidth: 40,
-        scales: [
-            {
-                unit: 'month',
-                step: 1,
-                format(date) {
-                    if (!date || !date.startDate) return '';
-                    const d = date.startDate;
-                    return `${d.getFullYear()}年${d.getMonth() + 1}月`;
+    // --- 1. 核心配置提取 (完整版) ---
+    // 包含所有静态配置，确保 updateOption 时不会丢失任何样式
+    const baseOptions = useMemo(() => ({
+        taskListTable: {
+            columns: [
+                {
+                    field: 'is_completed',
+                    title: '✓',
+                    width: 40,
+                    cellType: 'checkbox',
+                    style: { textAlign: 'center' }
                 },
-                style: {
-                    fontSize: 14,
-                    fontWeight: 'bold',
-                    color: '#111827',
-                    textAlign: 'left',
-                    textStick: true, 
-                    padding: [0, 10],
-                    backgroundColor: '#f9fafb',
-                    borderBottom: '1px solid #d1d5db' 
+                { 
+                    field: 'title', 
+                    title: '任务名称', 
+                    width: 250, 
+                    sort: true,
+                    tree: true, 
+                    editor: 'input-editor' 
+                },
+                { field: 'start', title: '开始日期', width: 100, sort: true, editor: 'date-editor' },
+                { field: 'end', title: '结束日期', width: 100, sort: true, editor: 'date-editor' },
+                {
+                    field: 'progress',
+                    title: '进度',
+                    width: 80,
+                    sort: true,
+                    headerStyle: { borderColor: '#e1e4e8' },
+                    style: { borderColor: '#e1e4e8', color: 'green' }
                 }
+            ],
+            tableWidth: 'auto',
+            minTableWidth: 350,
+            maxTableWidth: 800
+        },
+        tasksShowMode: 'tasks_separate',
+        // 之前报错缺少的 frame 配置
+        frame: {
+            verticalSplitLineMoveable: true,
+            outerFrameStyle: { borderLineWidth: 1, borderColor: '#e5e7eb', cornerRadius: 8 },
+            verticalSplitLine: { lineWidth: 2, lineColor: '#d1d5db' },
+            verticalSplitLineHighlight: { lineColor: '#3b82f6', lineWidth: 2 }
+        },
+        // 之前报错缺少的 grid 配置
+        grid: { 
+            verticalLine: { lineWidth: 1, lineColor: '#f3f4f6' }, 
+            horizontalLine: { lineWidth: 1, lineColor: '#f3f4f6' } 
+        },
+        headerRowHeight: 50,
+        rowHeight: 35,
+        taskBar: {
+            selectable: true,
+            startDateField: 'start',
+            endDateField: 'end',
+            progressField: 'progress',
+            labelText: '{title} ({progress}%)',
+            labelTextStyle: { fontFamily: 'Arial, sans-serif', fontSize: 12, textAlign: 'left', color: '#24292f' },
+            barStyle: {
+                width: 24,
+                barColor: '#3b82f6',
+                completedBarColor: '#10b981',
+                cornerRadius: 6,
+                borderWidth: 1,
+                borderColor: '#e5e7eb'
             },
-            {
-                unit: 'day',
-                step: 1,
-                format(date) {
-                    return date.dateIndex.toString();
+            progressAdjustable: true
+        },
+        timelineHeader: {
+            verticalLine: { lineWidth: 1, lineColor: '#d1d5db' },
+            horizontalLine: { lineWidth: 1, lineColor: '#d1d5db' },
+            backgroundColor: '#f9fafb',
+            colWidth: 40,
+            scales: [
+                {
+                    unit: 'month',
+                    step: 1,
+                    format(date) {
+                        if (!date || !date.startDate) return '';
+                        const d = date.startDate;
+                        return `${d.getFullYear()}年${d.getMonth() + 1}月`;
+                    },
+                    style: {
+                        fontSize: 14,
+                        fontWeight: 'bold',
+                        color: '#111827',
+                        textAlign: 'left',
+                        textStick: true, 
+                        padding: [0, 10],
+                        backgroundColor: '#f9fafb',
+                        borderBottom: '1px solid #d1d5db' 
+                    }
                 },
-                style: {
-                    fontSize: 12,
-                    color: '#374151',
-                    textAlign: 'center',
-                    backgroundColor: '#f9fafb'
+                {
+                    unit: 'day',
+                    step: 1,
+                    format(date) {
+                        return date.dateIndex.toString();
+                    },
+                    style: {
+                        fontSize: 12,
+                        color: '#374151',
+                        textAlign: 'center',
+                        backgroundColor: '#f9fafb'
+                    }
                 }
-            }
-        ]
+            ]
+        },
+        rowSeriesNumber: { title: '#', width: 40, headerStyle: { bgColor: '#f9fafb', borderColor: '#d1d5db' }, style: { borderColor: '#d1d5db' } },
+        scrollStyle: { visible: 'scrolling', width: 8, scrollRailColor: '#f3f4f6', scrollSliderColor: '#d1d5db' },
+        overscrollBehavior: 'none'
     }), []);
 
     // 2. Fetch Data
@@ -243,48 +284,13 @@ const GanttChart = () => {
             const dateEditor = new DateInputEditor();
             VTable.register.editor('date-editor', dateEditor);
 
+            // 初始化时：合并 BaseOptions + 动态数据
             const option = {
+                ...baseOptions, // 展开所有基础配置
                 records: [], 
                 markLine: [],
-                taskListTable: {
-                    columns: columnsConfig, // 使用提取的配置
-                    tableWidth: 'auto',
-                    minTableWidth: 350,
-                    maxTableWidth: 800
-                },
-                tasksShowMode: 'tasks_separate',
-                frame: {
-                    verticalSplitLineMoveable: true,
-                    outerFrameStyle: { borderLineWidth: 1, borderColor: '#e5e7eb', cornerRadius: 8 },
-                    verticalSplitLine: { lineWidth: 2, lineColor: '#d1d5db' },
-                    verticalSplitLineHighlight: { lineColor: '#3b82f6', lineWidth: 2 }
-                },
-                grid: { verticalLine: { lineWidth: 1, lineColor: '#f3f4f6' }, horizontalLine: { lineWidth: 1, lineColor: '#f3f4f6' } },
-                headerRowHeight: 50,
-                rowHeight: 35,
-                taskBar: {
-                    selectable: true,
-                    startDateField: 'start',
-                    endDateField: 'end',
-                    progressField: 'progress',
-                    labelText: '{title} ({progress}%)',
-                    labelTextStyle: { fontFamily: 'Arial, sans-serif', fontSize: 12, textAlign: 'left', color: '#24292f' },
-                    barStyle: {
-                        width: 24,
-                        barColor: '#3b82f6',
-                        completedBarColor: '#10b981',
-                        cornerRadius: 6,
-                        borderWidth: 1,
-                        borderColor: '#e5e7eb'
-                    },
-                    progressAdjustable: true
-                },
-                timelineHeader: timelineHeaderConfig, // 使用提取的配置
                 minDate: viewRange[0].format('YYYY-MM-DD'),
                 maxDate: viewRange[1].format('YYYY-MM-DD'),
-                rowSeriesNumber: { title: '#', width: 40, headerStyle: { bgColor: '#f9fafb', borderColor: '#d1d5db' }, style: { borderColor: '#d1d5db' } },
-                scrollStyle: { visible: 'scrolling', width: 8, scrollRailColor: '#f3f4f6', scrollSliderColor: '#d1d5db' },
-                overscrollBehavior: 'none'
             };
 
             const ganttInstance = new VTableGantt.Gantt(containerRef.current, option);
@@ -393,9 +399,9 @@ const GanttChart = () => {
                 instanceRef.current = null;
             }
         };
-    }, []); // 依赖为空，只初始化一次
+    }, []); 
 
-    // 4. Update View Range (日期范围变更)
+    // 4. Update View Range (全量更新)
     useEffect(() => {
         if (isFirstRun.current) {
             isFirstRun.current = false;
@@ -410,23 +416,16 @@ const GanttChart = () => {
         console.log(`[DEBUG] ViewRange Triggered: ${minStr} to ${maxStr}`);
         
         try {
-            // --- 关键修复 ---
-            // 必须传入完整的关键配置，否则 VTable 内部在计算 Scale 时会因为缺少配置而报错
+            // --- 关键修复：传入 baseOptions 中的所有属性 ---
             const updateParams = {
+                ...baseOptions, // 包含 frame, grid, taskBar, timelineHeader, taskListTable 等所有配置
                 minDate: minStr,
                 maxDate: maxStr,
-                records: records, // 数据
-                timelineHeader: timelineHeaderConfig, // 必须重新传入时间轴配置！
-                taskListTable: {
-                    columns: columnsConfig, // 必须重新传入列配置！
-                    tableWidth: 'auto',
-                    minTableWidth: 350,
-                    maxTableWidth: 800
-                }
+                records: records, // 当前数据
             };
             
             instanceRef.current.updateOption(updateParams);
-            console.log('[DEBUG] updateOption executed successfully.');
+            console.log('[DEBUG] updateOption executed successfully with FULL CONFIG.');
         } catch (err) {
             console.error('[DEBUG CRITICAL] Error during updateOption:', err);
         }
@@ -435,7 +434,6 @@ const GanttChart = () => {
     // 5. Update Data (数据变更)
     useEffect(() => {
         if (!instanceRef.current) return;
-        // 当数据变化时，只更新数据即可，不需要 updateOption
         instanceRef.current.setRecords(records);
     }, [records]);
 
