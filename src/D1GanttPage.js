@@ -188,26 +188,29 @@ const GanttChart = () => {
             labelTextStyle: { fontFamily: 'Arial, sans-serif', fontSize: 12, textAlign: 'left', color: '#24292f' },
             barStyle: {
                 width: 24,
-                barColor: (item) => {
-                    const record = item?.record || item;
-                    let color = '#3b82f6';
+                barColor: (args) => {
+                    // VTable Gantt barColor callback args usually contains the record directly or inside a property
+                    // Let's try to be robust and also debug the args structure
+                    const record = args?.taskRecord || args?.record || args;
+                    
+                    let color = '#3b82f6'; // 默认蓝色
                     
                     if (record) {
                         const today = dayjs();
                         const endDate = record.end ? dayjs(record.end) : null;
+                        // 逻辑：结束日期 < 今天 (不含今天)
                         const isBeforeToday = endDate ? endDate.isBefore(today, 'day') : false;
-                        
-                        // 打印日志追踪特定任务（比如第4个任务或所有任务）
-                        // 限制日志数量，避免控制台爆炸，只打印前几个或特定条件的
-                        if (isBeforeToday && !record.is_completed) {
-                             console.log(`[DEBUG BAR COLOR] Task: ${record.title}, End: ${record.end}, IsBeforeToday: ${isBeforeToday}, Completed: ${record.is_completed} -> RED`);
+                        const isCompleted = record.is_completed === true || record.is_completed === 1;
+
+                        if (isBeforeToday && !isCompleted) {
                              color = 'red';
-                        } else if (record.title && record.title.includes('新任务')) {
-                             // 针对截图中"新任务"的特别调试
-                             console.log(`[DEBUG BAR COLOR] Task: ${record.title}, End: ${record.end}, IsBeforeToday: ${isBeforeToday}, Completed: ${record.is_completed} -> ${color}`);
+                        }
+                        
+                        // 减少日志输出，仅在确实触发变色或特定任务时输出
+                        if (color === 'red' || (record.title && record.title.includes('新任务'))) {
+                            console.log(`[DEBUG BAR] Color: ${color}, Title: ${record.title}, End: ${record.end}, Overdue: ${isBeforeToday}, Completed: ${isCompleted}`);
                         }
                     }
-                    
                     return color;
                 },
                 completedBarColor: '#10b981',
