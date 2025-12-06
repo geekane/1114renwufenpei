@@ -614,6 +614,68 @@ const GanttChart = () => {
         }
     };
 
+    const handleClearInvalidTasks = async () => {
+        if (!window.confirm('确定要清理所有“新任务”且时长不超过1天的无效任务吗？此操作不可撤销。')) {
+            return;
+        }
+
+        setIsLoading(true);
+        let deletedCount = 0;
+
+        const filterRecursive = (nodes) => {
+            return nodes.filter(node => {
+                // 检查是否符合删除条件
+                const isNewTask = node.title && node.title.includes('新任务');
+                let isShortDuration = false;
+                if (node.start && node.end) {
+                    const diff = dayjs(node.end).diff(dayjs(node.start), 'day');
+                    if (diff <= 1) isShortDuration = true;
+                }
+
+                const shouldDelete = isNewTask && isShortDuration;
+
+                if (shouldDelete) {
+                    deletedCount++;
+                    return false; // 过滤掉（删除）
+                }
+
+                // 如果不删除，继续检查子节点
+                if (node.children) {
+                    node.children = filterRecursive(node.children);
+                }
+                return true; // 保留
+            });
+        };
+
+        const newRecords = filterRecursive(JSON.parse(JSON.stringify(records))); // 深拷贝以防副作用
+
+        if (deletedCount === 0) {
+            message.info('没有发现符合清理条件的无效任务');
+            setIsLoading(false);
+            return;
+        }
+
+        try {
+            // 更新本地状态
+            setRecords(newRecords);
+            
+            // 同步保存到云端
+            const result = await apiCall('tasks', 'POST', { records: newRecords, storeId });
+            if (result.success) {
+                message.success(`成功清理了 ${deletedCount} 个无效任务`);
+            } else {
+                message.error('清理后保存失败: ' + (result.error?.message || '未知错误'));
+                // 如果保存失败，最好重新拉取数据以恢复一致性
+                fetchData();
+            }
+        } catch (error) {
+            message.error('清理失败: ' + error.message);
+            fetchData();
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
     return (
         <div style={{ height: '90vh', width: '100%', display: 'flex', flexDirection: 'column', position: 'relative' }}>
             {contextMenu.visible && (
@@ -644,6 +706,7 @@ const GanttChart = () => {
                 <Space>
                     <Link to={`/crowd-portrait/${storeId}`}><Button>人群画像分析</Button></Link>
                     <Button onClick={handleRefresh} disabled={isLoading}>{isLoading ? '正在刷新...' : '刷新同步数据'}</Button>
+                    <Button onClick={handleClearInvalidTasks} disabled={isLoading} danger>一键清理无效任务</Button>
                     <Button onClick={() => handleAddTask(null)} disabled={isLoading}>新增任务</Button>
                     <Button type="primary" onClick={handleSaveChanges} disabled={isLoading} loading={isLoading}>
                         {isLoading ? '正在保存...' : '保存更改到云端'}
