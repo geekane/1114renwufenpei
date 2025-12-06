@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { Button, Space, message, DatePicker } from 'antd';
 import dayjs from 'dayjs';
@@ -20,7 +20,6 @@ function formatDate(date) {
     return year + '-' + month + '-' + day;
 }
 
-// 里程碑弹窗逻辑
 function createPopup({ date, content }, position, callback) {
     let container = document.getElementById('live-demo-additional-container');
     if (!container) {
@@ -69,7 +68,6 @@ function createPopup({ date, content }, position, callback) {
     popup.querySelector('.popup-input').focus();
 }
 
-// API请求封装
 const apiCall = async (endpoint, method = 'POST', body) => {
     try {
         const response = await fetch(`/api/${endpoint}`, {
@@ -103,13 +101,83 @@ const GanttChart = () => {
     const [isLoading, setIsLoading] = useState(false);
     const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0, record: null });
     
-    // 默认时间范围：今天 -> 2个月后
     const [viewRange, setViewRange] = useState([
         dayjs(), 
         dayjs().add(2, 'month')
     ]);
 
-    // 1. Fetch Data
+    // --- 1. 配置提取 (使用 useMemo 避免重复创建) ---
+    // 将这些配置提取出来，以便在 updateOption 时也能使用
+    const columnsConfig = useMemo(() => [
+        {
+            field: 'is_completed',
+            title: '✓',
+            width: 40,
+            cellType: 'checkbox',
+            style: { textAlign: 'center' }
+        },
+        { 
+            field: 'title', 
+            title: '任务名称', 
+            width: 250, 
+            sort: true,
+            tree: true, 
+            editor: 'input-editor' 
+        },
+        { field: 'start', title: '开始日期', width: 100, sort: true, editor: 'date-editor' },
+        { field: 'end', title: '结束日期', width: 100, sort: true, editor: 'date-editor' },
+        {
+            field: 'progress',
+            title: '进度',
+            width: 80,
+            sort: true,
+            headerStyle: { borderColor: '#e1e4e8' },
+            style: { borderColor: '#e1e4e8', color: 'green' }
+        }
+    ], []);
+
+    const timelineHeaderConfig = useMemo(() => ({
+        verticalLine: { lineWidth: 1, lineColor: '#d1d5db' },
+        horizontalLine: { lineWidth: 1, lineColor: '#d1d5db' },
+        backgroundColor: '#f9fafb',
+        colWidth: 40,
+        scales: [
+            {
+                unit: 'month',
+                step: 1,
+                format(date) {
+                    if (!date || !date.startDate) return '';
+                    const d = date.startDate;
+                    return `${d.getFullYear()}年${d.getMonth() + 1}月`;
+                },
+                style: {
+                    fontSize: 14,
+                    fontWeight: 'bold',
+                    color: '#111827',
+                    textAlign: 'left',
+                    textStick: true, 
+                    padding: [0, 10],
+                    backgroundColor: '#f9fafb',
+                    borderBottom: '1px solid #d1d5db' 
+                }
+            },
+            {
+                unit: 'day',
+                step: 1,
+                format(date) {
+                    return date.dateIndex.toString();
+                },
+                style: {
+                    fontSize: 12,
+                    color: '#374151',
+                    textAlign: 'center',
+                    backgroundColor: '#f9fafb'
+                }
+            }
+        ]
+    }), []);
+
+    // 2. Fetch Data
     const fetchData = async () => {
         if (!storeId) return;
         setIsLoading(true);
@@ -131,17 +199,14 @@ const GanttChart = () => {
                             children: children
                         };
                     });
-                    
                     return mappedNodes.sort((a, b) => {
                         const titleA = a.title ? String(a.title) : '';
                         const titleB = b.title ? String(b.title) : '';
                         return titleA.localeCompare(titleB, 'zh-CN', { numeric: true });
                     });
                 };
-                
                 setRecords(processRecords(data.records));
             } else {
-                console.warn('[DEBUG] No records array in API response');
                 setRecords([]);
             }
 
@@ -158,63 +223,31 @@ const GanttChart = () => {
         }
     };
 
-    // Initial Fetch
     useEffect(() => {
         fetchData();
     }, [storeId]);
 
-    // Close Context Menu
     useEffect(() => {
         const handleClick = () => setContextMenu({ visible: false, x: 0, y: 0, record: null });
         window.addEventListener('click', handleClick);
         return () => window.removeEventListener('click', handleClick);
     }, []);
 
-    // Initialize Gantt Instance
+    // 3. Initialize Gantt Instance
     useEffect(() => {
         if (containerRef.current && !instanceRef.current) {
             console.log("[DEBUG] Initializing Gantt Instance...");
             
-            // Register Editors
             const inputEditor = new InputEditor();
             VTable.register.editor('input-editor', inputEditor);
             const dateEditor = new DateInputEditor();
             VTable.register.editor('date-editor', dateEditor);
 
-            // Columns
-            const columns = [
-                {
-                    field: 'is_completed',
-                    title: '✓',
-                    width: 40,
-                    cellType: 'checkbox',
-                    style: { textAlign: 'center' }
-                },
-                { 
-                    field: 'title', 
-                    title: '任务名称', 
-                    width: 250, 
-                    sort: true,
-                    tree: true, 
-                    editor: 'input-editor' 
-                },
-                { field: 'start', title: '开始日期', width: 100, sort: true, editor: 'date-editor' },
-                { field: 'end', title: '结束日期', width: 100, sort: true, editor: 'date-editor' },
-                {
-                    field: 'progress',
-                    title: '进度',
-                    width: 80,
-                    sort: true,
-                    headerStyle: { borderColor: '#e1e4e8' },
-                    style: { borderColor: '#e1e4e8', color: 'green' }
-                }
-            ];
-
             const option = {
                 records: [], 
                 markLine: [],
                 taskListTable: {
-                    columns: columns,
+                    columns: columnsConfig, // 使用提取的配置
                     tableWidth: 'auto',
                     minTableWidth: 350,
                     maxTableWidth: 800
@@ -246,46 +279,7 @@ const GanttChart = () => {
                     },
                     progressAdjustable: true
                 },
-                timelineHeader: {
-                    verticalLine: { lineWidth: 1, lineColor: '#d1d5db' },
-                    horizontalLine: { lineWidth: 1, lineColor: '#d1d5db' },
-                    backgroundColor: '#f9fafb',
-                    colWidth: 40,
-                    scales: [
-                        {
-                            unit: 'month',
-                            step: 1,
-                            format(date) {
-                                if (!date || !date.startDate) return '';
-                                const d = date.startDate;
-                                return `${d.getFullYear()}年${d.getMonth() + 1}月`;
-                            },
-                            style: {
-                                fontSize: 14,
-                                fontWeight: 'bold',
-                                color: '#111827',
-                                textAlign: 'left',
-                                textStick: true, 
-                                padding: [0, 10],
-                                backgroundColor: '#f9fafb',
-                                borderBottom: '1px solid #d1d5db' 
-                            }
-                        },
-                        {
-                            unit: 'day',
-                            step: 1,
-                            format(date) {
-                                return date.dateIndex.toString();
-                            },
-                            style: {
-                                fontSize: 12,
-                                color: '#374151',
-                                textAlign: 'center',
-                                backgroundColor: '#f9fafb'
-                            }
-                        }
-                    ]
-                },
+                timelineHeader: timelineHeaderConfig, // 使用提取的配置
                 minDate: viewRange[0].format('YYYY-MM-DD'),
                 maxDate: viewRange[1].format('YYYY-MM-DD'),
                 rowSeriesNumber: { title: '#', width: 40, headerStyle: { bgColor: '#f9fafb', borderColor: '#d1d5db' }, style: { borderColor: '#d1d5db' } },
@@ -296,9 +290,7 @@ const GanttChart = () => {
             const ganttInstance = new VTableGantt.Gantt(containerRef.current, option);
             instanceRef.current = ganttInstance;
             
-            // 挂载到 window 方便调试
             window.ganttInstance = ganttInstance;
-            console.log("[DEBUG] Gantt Instance created and assigned to window.ganttInstance");
 
             // --- Listener ---
             if (ganttInstance.taskListTableInstance) {
@@ -401,48 +393,49 @@ const GanttChart = () => {
                 instanceRef.current = null;
             }
         };
-    }, []);
+    }, []); // 依赖为空，只初始化一次
 
-    // --- 关键调试：监听 viewRange 的变化 ---
+    // 4. Update View Range (日期范围变更)
     useEffect(() => {
         if (isFirstRun.current) {
-            console.log('[DEBUG] First run skipped for updateOption.');
             isFirstRun.current = false;
             return;
         }
 
-        if (!instanceRef.current) {
-            console.error('[DEBUG ERROR] Instance not ready during ViewRange update');
-            return;
-        }
+        if (!instanceRef.current || !viewRange || viewRange.length < 2) return;
 
         const minStr = viewRange[0].format('YYYY-MM-DD');
         const maxStr = viewRange[1].format('YYYY-MM-DD');
         
         console.log(`[DEBUG] ViewRange Triggered: ${minStr} to ${maxStr}`);
-        console.log(`[DEBUG] Records count available for update: ${records?.length}`);
         
-        // 尝试捕获 updateOption 的错误
         try {
+            // --- 关键修复 ---
+            // 必须传入完整的关键配置，否则 VTable 内部在计算 Scale 时会因为缺少配置而报错
             const updateParams = {
                 minDate: minStr,
                 maxDate: maxStr,
-                records: records
+                records: records, // 数据
+                timelineHeader: timelineHeaderConfig, // 必须重新传入时间轴配置！
+                taskListTable: {
+                    columns: columnsConfig, // 必须重新传入列配置！
+                    tableWidth: 'auto',
+                    minTableWidth: 350,
+                    maxTableWidth: 800
+                }
             };
-            console.log('[DEBUG] Calling updateOption with params:', updateParams);
             
             instanceRef.current.updateOption(updateParams);
-            
             console.log('[DEBUG] updateOption executed successfully.');
         } catch (err) {
             console.error('[DEBUG CRITICAL] Error during updateOption:', err);
         }
-    }, [viewRange]); // 移除 records 依赖，防止死循环，仅日期变化时触发更新，数据更新走下面的 setRecords
+    }, [viewRange]); // 仅当日期变化时触发
 
-    // --- 数据变化时：更新 Gantt ---
+    // 5. Update Data (数据变更)
     useEffect(() => {
         if (!instanceRef.current) return;
-        console.log(`[DEBUG] setRecords triggered. Count: ${records?.length}`);
+        // 当数据变化时，只更新数据即可，不需要 updateOption
         instanceRef.current.setRecords(records);
     }, [records]);
 
@@ -450,15 +443,12 @@ const GanttChart = () => {
         if (instanceRef.current && markLines) instanceRef.current.updateMarkLine(markLines);
     }, [markLines]);
 
-    // --- 用户手动改变日期范围 ---
     const handleDateRangeChange = (dates) => {
         if (dates && dates.length === 2) {
-            console.log('[DEBUG] User changed RangePicker');
             setViewRange(dates);
         }
     };
 
-    // --- Buttons ---
     const handleRefresh = () => fetchData();
 
     const handleSaveChanges = async () => {
