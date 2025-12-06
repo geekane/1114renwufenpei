@@ -110,9 +110,8 @@ const GanttChart = () => {
             const data = await response.json();
 
             if (Array.isArray(data.records)) {
-                // --- 仅修改了这里的 processRecords 逻辑 ---
                 const processRecords = (nodes) => {
-                    // 1. 先进行数据映射（处理布尔值和递归子节点）
+                    // 1. 数据映射
                     const mappedNodes = nodes.map(node => {
                         const boolCompleted = node.is_completed === 1 || node.is_completed === true;
                         const children = node.children ? processRecords(node.children) : undefined;
@@ -123,17 +122,14 @@ const GanttChart = () => {
                         };
                     });
 
-                    // 2. 增加自然排序逻辑：
-                    // 使用 localeCompare 配合 { numeric: true }
-                    // 这样 "1. xxx" 后面会跟着 "2. xxx" 而不是 "10. xxx"
+                    // 2. 自然排序 (1, 2, ... 10)
                     return mappedNodes.sort((a, b) => {
                         const titleA = a.title ? String(a.title) : '';
                         const titleB = b.title ? String(b.title) : '';
                         return titleA.localeCompare(titleB, 'zh-CN', { numeric: true });
                     });
                 };
-                // ----------------------------------------
-
+                
                 setRecords(processRecords(data.records));
             } else {
                 setRecords([]);
@@ -184,7 +180,7 @@ const GanttChart = () => {
                     cellType: 'checkbox',
                     style: { textAlign: 'center' }
                 },
-                { field: 'title', title: '任务名称', width: 200, sort: true, tree: true, editor: 'input-editor' },
+                { field: 'title', title: '任务名称', width: 250, sort: true, tree: true, editor: 'input-editor' },
                 { field: 'start', title: '开始日期', width: 100, sort: true, editor: 'date-editor' },
                 { field: 'end', title: '结束日期', width: 100, sort: true, editor: 'date-editor' },
                 {
@@ -198,8 +194,8 @@ const GanttChart = () => {
             ];
 
             const today = new Date();
-            const maxDate = new Date();
-            maxDate.setMonth(today.getMonth() + 3); // 稍微调大一点范围
+            const initMaxDate = new Date();
+            initMaxDate.setMonth(today.getMonth() + 1);
 
             const option = {
                 records: [], 
@@ -253,6 +249,7 @@ const GanttChart = () => {
                             unit: 'month',
                             step: 1,
                             format(date) {
+                                if (!date || !date.startDate) return '';
                                 const d = date.startDate;
                                 return `${d.getFullYear()}年${d.getMonth() + 1}月`;
                             },
@@ -260,8 +257,8 @@ const GanttChart = () => {
                                 fontSize: 14,
                                 fontWeight: 'bold',
                                 color: '#111827',
-                                textAlign: 'left', // 靠左显示
-                                textStick: true,   // 滚动吸顶
+                                textAlign: 'left',
+                                textStick: true,
                                 padding: [0, 10],
                                 backgroundColor: '#f9fafb',
                                 borderBottom: '1px solid #d1d5db' 
@@ -283,11 +280,11 @@ const GanttChart = () => {
                     ]
                 },
                 minDate: formatDate(today),
-                maxDate: formatDate(maxDate),
+                maxDate: formatDate(initMaxDate),
                 rowSeriesNumber: { title: '#', width: 40, headerStyle: { bgColor: '#f9fafb', borderColor: '#d1d5db' }, style: { borderColor: '#d1d5db' } },
                 scrollStyle: { visible: 'scrolling', width: 8, scrollRailColor: '#f3f4f6', scrollSliderColor: '#d1d5db' },
                 overscrollBehavior: 'none'
-            }; // <--- 此处保留了您提供的修复后的闭合符号
+            };
 
             const ganttInstance = new VTableGantt.Gantt(containerRef.current, option);
             instanceRef.current = ganttInstance;
@@ -299,7 +296,6 @@ const GanttChart = () => {
                     const record = ganttInstance.taskListTableInstance.getRecordByCell(col, row);
                     
                     if (record) {
-                        console.log(`[CHECKBOX EVENT] Task: ${record.title} (ID:${record.id}) -> ${checked}`);
                         setRecords(prev => {
                             const updateRecursive = (nodes) => {
                                 return nodes.map(node => {
@@ -402,9 +398,46 @@ const GanttChart = () => {
         };
     }, []);
 
-    // --- 同步 State 到 Gantt ---
+    // --- 同步 State 到 Gantt (优化后的日期计算逻辑) ---
     useEffect(() => {
-        if (instanceRef.current) instanceRef.current.setRecords(records);
+        if (!instanceRef.current) return;
+
+        // 1. 设置数据
+        instanceRef.current.setRecords(records);
+
+        // 2. 简单计算：找最早的开始日期，然后 +2 个月
+        if (records && records.length > 0) {
+            let minTs = Infinity;
+
+            // 递归只找 start，不需要管 end
+            const findMin = (nodes) => {
+                nodes.forEach(node => {
+                    if (node.start) {
+                        const t = new Date(node.start).getTime();
+                        if (!isNaN(t) && t < minTs) minTs = t;
+                    }
+                    if (node.children) findMin(node.children);
+                });
+            };
+            
+            findMin(records);
+
+            if (minTs !== Infinity) {
+                // minDate = 最早开始日期 - 3天 (缓冲)
+                const newMin = new Date(minTs);
+                newMin.setDate(newMin.getDate() - 3);
+
+                // maxDate = newMin + 2个月
+                const newMax = new Date(newMin);
+                newMax.setMonth(newMax.getMonth() + 2);
+
+                instanceRef.current.updateOption({
+                    minDate: formatDate(newMin),
+                    maxDate: formatDate(newMax)
+                });
+            }
+        }
+        
     }, [records]);
 
     useEffect(() => {
@@ -417,7 +450,7 @@ const GanttChart = () => {
     const handleSaveChanges = async () => {
         setIsLoading(true);
         try {
-            console.log("Saving records to cloud:", records); // 调试日志
+            console.log("Saving records to cloud:", records);
             const result = await apiCall('tasks', 'POST', { records, storeId });
             if (result.success) message.success('更改已成功保存');
             else message.error('保存失败: ' + (result.error?.message || '未知错误'));
@@ -455,7 +488,7 @@ const GanttChart = () => {
     };
 
     return (
-        <div style={{ height: '100%', width: '100%', display: 'flex', flexDirection: 'column', position: 'relative' }}>
+        <div style={{ height: '90vh', width: '100%', display: 'flex', flexDirection: 'column', position: 'relative' }}>
             {contextMenu.visible && (
                 <div 
                     style={{
