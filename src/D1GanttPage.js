@@ -6,7 +6,6 @@ import * as VTableGantt from '@visactor/vtable-gantt';
 import { DateInputEditor, InputEditor } from '@visactor/vtable-editors';
 
 // --- 辅助函数 ---
-
 function formatDate(date) {
     if (!date) return '';
     const d = new Date(date);
@@ -86,7 +85,6 @@ const apiCall = async (endpoint, method = 'POST', body) => {
 };
 
 // --- 主组件 ---
-
 const GanttChart = () => {
     const { storeId } = useParams();
     const containerRef = useRef(null);
