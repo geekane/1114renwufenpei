@@ -135,6 +135,8 @@ const StoreDetailsPage = () => {
   const [storeDetails, setStoreDetails] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const { userRole } = useContext(AuthContext);
+  const isReadOnly = userRole === 'readonly';
   
   // 1. 将 generateColumns 放在这里，确保它可以访问最新的 handleUpload/handleSave
   // 也不需要 useRef 包裹，因为函数内部依赖了不断变化的 state
@@ -172,8 +174,9 @@ const StoreDetailsPage = () => {
             customRequest={(options) => handleUpload(options, record)}
             showUploadList={false}
             multiple
+            disabled={isReadOnly} // 禁用上传
           >
-            <Button icon={<UploadOutlined />} size="small" type="dashed">上传</Button>
+            <Button icon={<UploadOutlined />} size="small" type="dashed" disabled={isReadOnly}>上传</Button>
           </Upload>
         ),
       },
@@ -194,6 +197,7 @@ const StoreDetailsPage = () => {
           }
 
           const handleDocDelete = (docToDelete) => {
+            if (isReadOnly) return; // 只读模式下禁止删除
             modal.confirm({
               title: '您确定要删除这个文件吗?',
               icon: <ExclamationCircleFilled />,
@@ -231,17 +235,17 @@ const StoreDetailsPage = () => {
               {documents.map(doc => (
                 <Tag
                   key={doc.key}
-                  closable
+                  closable={!isReadOnly} // 只读模式下不可关闭（删除）
                   onClose={(e) => { e.preventDefault(); handleDocDelete(doc); }}
                   icon={<PaperClipOutlined />}
                   color="blue"
                 >
                   <a href={`https://pub-47540e3d1c0c47f6b9505e84e0f27df6.r2.dev/${doc.key}`} target="_blank" rel="noopener noreferrer">
                     <Typography.Text
-                      editable={{
+                      editable={!isReadOnly ? {
                         onChange: (newName) => handleDocRename(doc, newName),
                         tooltip: `原始文件名: ${doc.originalName || doc.name}`
-                      }}
+                      } : false} // 只读模式下不可重命名
                     >
                       {doc.name}
                     </Typography.Text>
@@ -470,7 +474,7 @@ const StoreDetailsPage = () => {
       ...col,
       onCell: (record) => ({
         record,
-        editable: col.editable,
+        editable: isReadOnly ? false : col.editable, // 只读模式下禁用编辑
         dataIndex: col.dataIndex,
         title: col.title,
         handleSave,
